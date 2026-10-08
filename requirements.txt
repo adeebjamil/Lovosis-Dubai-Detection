@@ -1,0 +1,14 @@
+# Lovosis Dubai Detection - Python Detector Dependencies
+opencv-python>=4.8.0
+numpy>=1.24.0
+onnxruntime>=1.16.0
+supervision>=0.20.0
+python-socketio>=5.11.0
+websocket-client>=1.8.0
+requests>=2.31.0
+pillow>=10.0.0
+scipy>=1.11.0
+
+# Note for GPU Acceleration on Dubai PC (NVIDIA):
+# If using NVIDIA CUDA GPU, replace onnxruntime with:
+# pip install onnxruntime-gpu
