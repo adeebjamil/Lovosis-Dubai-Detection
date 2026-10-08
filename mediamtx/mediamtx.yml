@@ -51,7 +51,6 @@ webrtcHandshakeTimeout: 15s
 rtmp: no
 hls: no
 srt: no
-moq: no
 playback: no
 metrics: no
 pprof: no
