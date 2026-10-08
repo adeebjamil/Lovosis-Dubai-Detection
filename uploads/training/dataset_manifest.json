@@ -1,0 +1,74 @@
+[
+  {
+    "category": "emirati_male",
+    "filename": "kandura_ghutra_1.jpg",
+    "description": "Emirati traditional Kandura & Ghutra (Khaled Al Khalidi)",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/f/fa/Khaled_Al_Khalidi_at_the_Arab_Media_Summit_in_Dubai_-_May_2026.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "path": "uploads\\training\\emirati_male\\kandura_ghutra_1.jpg",
+    "bytes": 545489
+  },
+  {
+    "category": "emirati_male",
+    "filename": "kandura_ghutra_2.jpg",
+    "description": "Emirati citizens in white Kandura at Dubai Mall",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/2/2a/Bagpipes_at_Dubai_Mall_%288939110333%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "path": "uploads\\training\\emirati_male\\kandura_ghutra_2.jpg",
+    "bytes": 375467
+  },
+  {
+    "category": "emirati_male",
+    "filename": "kandura_ghutra_3.jpg",
+    "description": "Emirati men in national attire with Ghutra and Agal",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/2/2c/People_of_the_United_Arab_Emirates_%286%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "path": "uploads\\training\\emirati_male\\kandura_ghutra_3.jpg",
+    "bytes": 3331491
+  },
+  {
+    "category": "emirati_female",
+    "filename": "abaya_shayla_1.jpg",
+    "description": "Authentic black Abaya and Niqab / Shayla traditional attire",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/c/c6/Muslim_woman_wearing_black_Abaya_Niq%C4%81b1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "path": "uploads\\training\\emirati_female\\abaya_shayla_1.jpg",
+    "bytes": 912847
+  },
+  {
+    "category": "emirati_female",
+    "filename": "abaya_shayla_2.jpg",
+    "description": "Gulf traditional black Abaya cloak and veil",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/c/ca/Woman_wearing_abaya_and_niqab.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "path": "uploads\\training\\emirati_female\\abaya_shayla_2.jpg",
+    "bytes": 1803649
+  },
+  {
+    "category": "emirati_female",
+    "filename": "abaya_shayla_3.jpg",
+    "description": "Gulf woman in black Abaya walking in market",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/3/3e/A_Qatari_woman_in_a_hijab_and_abaya_shopping_for_perfumes_in_Souq_Waqif.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "path": "uploads\\training\\emirati_female\\abaya_shayla_3.jpg",
+    "bytes": 219636
+  },
+  {
+    "category": "non_emirati",
+    "filename": "casual_western_1.jpg",
+    "description": "Tourists and residents in modern casual shirts and trousers in Dubai",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/5/5e/Tourism_in_Dubai_%D8%AA%D9%88%D8%B1%DB%8C%D8%B3%D8%AA_%D9%87%D8%A7_%D8%AF%D8%B1_%DA%A9%D8%B4%D9%88%D8%B1_%D8%A7%D9%85%D8%A7%D8%B1%D8%A7%D8%AA%D8%8C_%D8%B4%D9%87%D8%B1_%D8%AF%D8%A8%DB%8C_05.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "path": "uploads\\training\\non_emirati\\casual_western_1.jpg",
+    "bytes": 2976732
+  },
+  {
+    "category": "non_emirati",
+    "filename": "casual_western_2.jpg",
+    "description": "Visitors in regular casual western clothing in Dubai",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/7/79/Tourism_in_Dubai_%D8%AA%D9%88%D8%B1%DB%8C%D8%B3%D8%AA_%D9%87%D8%A7_%D8%AF%D8%B1_%DA%A9%D8%B4%D9%88%D8%B1_%D8%A7%D9%85%D8%A7%D8%B1%D8%A7%D8%AA%D8%8C_%D8%B4%D9%87%D8%B1_%D8%AF%D8%A8%DB%8C_07.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "path": "uploads\\training\\non_emirati\\casual_western_2.jpg",
+    "bytes": 2786576
+  },
+  {
+    "category": "non_emirati",
+    "filename": "casual_western_3.jpg",
+    "description": "Dubai Mall visitors in diverse international casual clothes",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/4/4e/Waterfall_%40Dubai_Mall.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "path": "uploads\\training\\non_emirati\\casual_western_3.jpg",
+    "bytes": 3213710
+  }
+]

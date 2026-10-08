@@ -1,0 +1,257 @@
+// Lovosis Detection — database schema (PostgreSQL 16)
+// Auth models follow .claude/docs/admin-auth.md §1
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Auth ─────────────────────────────
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+model Admin {
+  id                  String         @id @default(uuid())
+  name                String
+  email               String         @unique
+  passwordHash        String
+  role                AdminRole      @default(ADMIN)
+  avatarUrl           String?
+  isActive            Boolean        @default(true)
+  failedLoginAttempts Int            @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  refreshTokens       RefreshToken[]
+  reports             Report[]
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  adminId    String
+  admin      Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  userAgent  String?
+  ip         String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?
+  createdAt  DateTime  @default(now())
+
+  @@index([adminId])
+}
+
+// ──────────────────────────── Cameras ───────────────────────────
+
+enum CameraStatus {
+  ONLINE
+  CONNECTING
+  OFFLINE
+  ERROR
+  DISABLED
+}
+
+enum ZoneMode {
+  FULL_FRAME
+  CUSTOM
+}
+
+model Camera {
+  id                String            @id @default(uuid())
+  code              String            @unique // e.g. CAM-001
+  name              String
+  location          String?
+  rtspUrl           String // may contain credentials → always masked in API responses
+  enabled           Boolean           @default(true)
+  analyticsFps      Int               @default(10)
+  detectPersons     Boolean           @default(true)
+  detectGender      Boolean           @default(true)
+  detectPets        Boolean           @default(true)
+  detectNationality Boolean           @default(true)
+  zoneMode          ZoneMode          @default(FULL_FRAME)
+  customZonePoints  Json?             // array of [x, y] in 0..1 space
+  status            CameraStatus      @default(OFFLINE)
+  lastSeenAt        DateTime?
+  lastError         String?
+  width             Int?
+  height            Int?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  zones             Zone[]
+  tracks            Track[]
+  countEvents       CountEvent[]
+  aggregates        MinuteAggregate[]
+}
+
+enum ZoneType {
+  LINE // counting line → IN / OUT crossings
+  AREA // polygon → occupancy
+}
+
+model Zone {
+  id          String       @id @default(uuid())
+  cameraId    String
+  camera      Camera       @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  name        String
+  type        ZoneType
+  points      Json // normalized [[x,y], ...] in 0..1 image space
+  inDirection String? // for LINE: which side counts as IN ("LEFT" | "RIGHT" of the line vector)
+  enabled     Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  countEvents CountEvent[]
+
+  @@index([cameraId])
+}
+
+// ─────────────────────────── Detections ─────────────────────────
+
+enum DetectionClass {
+  PERSON
+  DOG
+  CAT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  UNKNOWN
+}
+
+enum NationalityGroup {
+  EMIRATI
+  NON_EMIRATI
+  UNKNOWN
+}
+
+enum Direction {
+  IN
+  OUT
+}
+
+/// One row per unique tracked object (person / dog / cat) per camera session.
+model Track {
+  id                    BigInt           @id @default(autoincrement())
+  cameraId              String
+  camera                Camera           @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  trackKey              String // detector session id + tracker id
+  class                 DetectionClass
+  gender                Gender           @default(UNKNOWN)
+  genderConfidence      Float?
+  nationality           NationalityGroup @default(UNKNOWN)
+  nationalityConfidence Float?
+  confidence            Float
+  firstSeenAt           DateTime
+  lastSeenAt            DateTime
+  dwellSeconds          Int              @default(0)
+
+  @@unique([cameraId, trackKey])
+  @@index([firstSeenAt])
+  @@index([cameraId, firstSeenAt])
+}
+
+/// A line crossing.
+model CountEvent {
+  id          BigInt           @id @default(autoincrement())
+  cameraId    String
+  camera      Camera           @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  zoneId      String?
+  zone        Zone?            @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  class       DetectionClass
+  gender      Gender           @default(UNKNOWN)
+  nationality NationalityGroup @default(UNKNOWN)
+  direction   Direction
+  occurredAt  DateTime
+
+  @@index([occurredAt])
+  @@index([cameraId, occurredAt])
+}
+
+/// Pre-aggregated per minute — powers dashboards and reports.
+model MinuteAggregate {
+  id           BigInt           @id @default(autoincrement())
+  cameraId     String
+  camera       Camera           @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  bucket       DateTime // minute start (UTC)
+  class        DetectionClass
+  gender       Gender           @default(UNKNOWN)
+  nationality  NationalityGroup @default(UNKNOWN)
+  uniqueCount  Int              @default(0)
+  inCount      Int              @default(0)
+  outCount     Int              @default(0)
+  maxOccupancy Int              @default(0)
+
+  @@unique([cameraId, bucket, class, gender, nationality])
+  @@index([bucket])
+}
+
+// ──────────────────────────── Reports ───────────────────────────
+
+enum ReportType {
+  DAILY
+  WEEKLY
+  CUSTOM
+}
+
+enum ReportStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
+}
+
+model Report {
+  id          String       @id @default(uuid())
+  type        ReportType
+  periodStart DateTime
+  periodEnd   DateTime
+  status      ReportStatus @default(PENDING)
+  pdfPath     String?
+  xlsxPath    String?
+  summary     Json?
+  error       String?
+  createdById String?
+  createdBy   Admin?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([type, periodStart])
+}
+
+// ───────────────────────── Models & settings ────────────────────
+
+enum ModelTask {
+  DETECTOR
+  FACE
+  GENDER
+  ATTIRE
+}
+
+model ModelVersion {
+  id        String    @id @default(uuid())
+  task      ModelTask
+  name      String
+  version   String
+  filePath  String
+  metrics   Json?
+  isActive  Boolean   @default(false)
+  notes     String?
+  createdAt DateTime  @default(now())
+
+  @@unique([task, version])
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

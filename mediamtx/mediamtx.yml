@@ -1,0 +1,59 @@
+# Lovosis Detection — MediaMTX (MIT) stream relay
+#
+# One RTSP connection per camera is pulled here; the browser live view (WebRTC/WHEP)
+# and the Python detector both read from MediaMTX, never from the camera directly
+# (many CCTV cameras only allow 2–4 concurrent sessions).
+#
+# Paths are NOT defined in this file. The Express API is the source of truth and
+# registers/removes one path per camera through the Control API (:9997).
+#
+# Security: every HTTP/RTSP listener binds to 127.0.0.1 and only localhost may
+# read/publish/use the API. The browser reaches WebRTC signalling only through the
+# authenticated Express proxy (/api/streams/:id/whep). Media flows over UDP :8189.
+
+logLevel: info
+logDestinations: [stdout]
+
+# ── Auth: localhost only ───────────────────────────────────────────
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+      - action: api
+      - action: metrics
+
+# ── Control API (used by the Express backend) ─────────────────────
+api: yes
+apiAddress: 127.0.0.1:9997
+
+# ── RTSP (read by the Python detector) ────────────────────────────
+rtsp: yes
+rtspAddress: 127.0.0.1:8554
+rtspTransports: [tcp]
+
+# ── WebRTC (browser live view via Express WHEP proxy) ─────────────
+webrtc: yes
+webrtcAddress: 127.0.0.1:8889
+webrtcEncryption: no
+webrtcLocalUDPAddress: :8189
+webrtcIPsFromInterfaces: yes
+webrtcHandshakeTimeout: 15s
+
+# ── Unused protocols (reduced attack surface) ─────────────────────
+rtmp: no
+hls: no
+srt: no
+moq: no
+playback: no
+metrics: no
+pprof: no
+
+# ── Defaults for camera paths added via the API ───────────────────
+pathDefaults:
+  sourceOnDemand: no
+  rtspTransport: tcp
