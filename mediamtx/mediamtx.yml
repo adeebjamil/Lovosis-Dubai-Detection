@@ -34,6 +34,9 @@ apiAddress: 127.0.0.1:9997
 # ── RTSP (read by the Python detector) ────────────────────────────
 rtsp: yes
 rtspAddress: 127.0.0.1:8554
+protocols: [tcp]
+rtpAddress: 127.0.0.1:8556
+rtcpAddress: 127.0.0.1:8557
 rtspTransports: [tcp]
 
 # ── WebRTC (browser live view via Express WHEP proxy) ─────────────
