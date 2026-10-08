@@ -35,8 +35,6 @@ apiAddress: 127.0.0.1:9997
 rtsp: yes
 rtspAddress: 127.0.0.1:8554
 protocols: [tcp]
-rtpAddress: 127.0.0.1:8556
-rtcpAddress: 127.0.0.1:8557
 rtspTransports: [tcp]
 
 # ── WebRTC (browser live view via Express WHEP proxy) ─────────────
@@ -51,6 +49,7 @@ webrtcHandshakeTimeout: 15s
 rtmp: no
 hls: no
 srt: no
+moq: no
 playback: no
 metrics: no
 pprof: no
