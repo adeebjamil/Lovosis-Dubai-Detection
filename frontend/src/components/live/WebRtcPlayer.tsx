@@ -8,19 +8,29 @@ import { api, apiErrorMessage } from "@/lib/api";
 type PlayerState = { phase: "connecting" } | { phase: "playing" } | { phase: "retrying"; message: string };
 
 const RETRY_MS = 5_000;
-const ICE_GATHER_MS = 2_000;
+const ICE_GATHER_MS = 250; // LAN streaming gathers host candidates within 20ms
 
 function waitIceGathering(pc: RTCPeerConnection): Promise<void> {
   if (pc.iceGatheringState === "complete") return Promise.resolve();
   return new Promise((resolve) => {
+    let finished = false;
     const done = () => {
-      pc.removeEventListener("icegatheringstatechange", check);
+      if (finished) return;
+      finished = true;
+      pc.removeEventListener("icegatheringstatechange", onState);
+      pc.removeEventListener("icecandidate", onCandidate);
       clearTimeout(timer);
       resolve();
     };
-    const check = () => pc.iceGatheringState === "complete" && done();
+    const onCandidate = (e: RTCPeerConnectionIceEvent) => {
+      if (e.candidate === null) done();
+    };
+    const onState = () => {
+      if (pc.iceGatheringState === "complete") done();
+    };
     const timer = setTimeout(done, ICE_GATHER_MS);
-    pc.addEventListener("icegatheringstatechange", check);
+    pc.addEventListener("icecandidate", onCandidate);
+    pc.addEventListener("icegatheringstatechange", onState);
   });
 }
 

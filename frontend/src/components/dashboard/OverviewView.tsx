@@ -36,6 +36,7 @@ import { useCameras } from "@/hooks/useCameras";
 import { STATUS_META, type Camera, type LiveFramePayload } from "@/lib/cameras";
 import WebRtcPlayer from "@/components/live/WebRtcPlayer";
 import DetectionOverlay from "@/components/live/DetectionOverlay";
+import CctvDetailsBar from "@/components/live/CctvDetailsBar";
 
 interface Totals {
   people: number;
@@ -430,37 +431,45 @@ export default function OverviewView() {
             </div>
 
             {/* Live Player Container */}
-            <div className="card-body p-0 bg-gray-950 relative flex-1 min-h-[300px] flex items-center justify-center">
+            <div className="card-body p-0 bg-gray-950 relative flex-1 flex flex-col justify-start">
               {activeCamera ? (
                 <div
                   id={`overview-live-tile-${activeCamera.code}`}
-                  className="relative w-full h-full min-h-[300px] flex items-center justify-center bg-gray-950 overflow-hidden"
-                  onDoubleClick={handleFullscreenCamera}
+                  className="relative w-full flex flex-col bg-gray-950 overflow-hidden"
                 >
                   {activeCamera.enabled && activeCamera.status === "ONLINE" ? (
-                    <div className="relative w-full h-full aspect-video">
-                      <WebRtcPlayer cameraId={activeCamera.id} label={activeCamera.name} />
-                      <DetectionOverlay camera={activeCamera} showOverlay={showOverlay} />
-                      <div className="live-tile-bar z-20">
-                        <span className="flex min-w-0 items-center gap-2">
-                          <span className="status-dot text-emerald-400" />
-                          <span className="truncate font-semibold">{activeCamera.code} · {activeCamera.name}</span>
-                          {activeCamera.location && (
-                            <span className="text-[11px] text-gray-300 font-normal hidden sm:inline">
-                              ({activeCamera.location})
-                            </span>
-                          )}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2 text-xs">
-                          {activeCamera.width && activeCamera.height && (
-                            <span className="hidden sm:inline text-gray-300">
-                              {activeCamera.width}×{activeCamera.height}
-                            </span>
-                          )}
-                          <span className="badge badge-success text-[10px] py-0.5">ONLINE</span>
-                        </span>
+                    <>
+                      {/* Clean 16:9 CCTV Video Stream Canvas */}
+                      <div
+                        className="relative w-full aspect-video bg-black overflow-hidden flex-shrink-0"
+                        onDoubleClick={handleFullscreenCamera}
+                      >
+                        <WebRtcPlayer cameraId={activeCamera.id} label={activeCamera.name} />
+                        <DetectionOverlay camera={activeCamera} showOverlay={showOverlay} />
+                        <div className="live-tile-bar z-20">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="status-dot text-emerald-400" />
+                            <span className="truncate font-semibold">{activeCamera.code} · {activeCamera.name}</span>
+                            {activeCamera.location && (
+                              <span className="text-[11px] text-gray-300 font-normal hidden sm:inline">
+                                ({activeCamera.location})
+                              </span>
+                            )}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2 text-xs">
+                            {activeCamera.width && activeCamera.height && (
+                              <span className="hidden sm:inline text-gray-300">
+                                {activeCamera.width}×{activeCamera.height}
+                              </span>
+                            )}
+                            <span className="badge badge-success text-[10px] py-0.5">ONLINE</span>
+                          </span>
+                        </div>
                       </div>
-                    </div>
+
+                      {/* Attached Rectangular Details Box Below the CCTV Video */}
+                      <CctvDetailsBar camera={activeCamera} />
+                    </>
                   ) : (
                     <div className="p-8 text-center text-gray-400 space-y-2">
                       <FontAwesomeIcon icon={faVideoSlash} className="text-3xl text-gray-600 mb-2" />

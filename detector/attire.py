@@ -32,7 +32,7 @@ class AttireClassifier:
                     str(yunet_path),
                     "",
                     (320, 320),
-                    score_threshold=0.30,
+                    score_threshold=0.25,
                     nms_threshold=0.3,
                 )
                 self.gender_sess = ort.InferenceSession(
@@ -67,47 +67,79 @@ class AttireClassifier:
             return None, (None, 0.0)
 
         h, w = crop_bgr.shape[:2]
-        search_crop = crop_bgr[: int(h * 0.70), :]
-        sh, sw = search_crop.shape[:2]
-        if sh < 20 or sw < 20:
+        if h < 25 or w < 20:
             return None, (None, 0.0)
 
         try:
-            self.face_detector.setInputSize((sw, sh))
-            faces = self.face_detector.detect(search_crop)[1]
-            scale = 1.0
+            # 1. First attempt: Natural upright orientation (0 deg)
+            self.face_detector.setInputSize((w, h))
+            faces = self.face_detector.detect(crop_bgr)[1]
+            best = None
+            best_score = 0.0
+            best_crop = crop_bgr
 
-            if faces is None or len(faces) == 0:
-                if max(h, w) > 800:
-                    scale = 800.0 / max(h, w)
-                    resized = cv2.resize(crop_bgr, (int(w * scale), int(h * scale)))
-                    self.face_detector.setInputSize((resized.shape[1], resized.shape[0]))
-                    faces = self.face_detector.detect(resized)[1]
-                else:
-                    self.face_detector.setInputSize((w, h))
-                    faces = self.face_detector.detect(crop_bgr)[1]
+            if faces is not None and len(faces) > 0:
+                for f in faces:
+                    sc = float(f[-1])
+                    if sc > best_score:
+                        best_score = sc
+                        best = f
 
-                if faces is None or len(faces) == 0:
-                    return None, (None, 0.0)
+            # 2. Second attempt (for ceiling/overhead view where seated person faces opposite direction):
+            rot180 = cv2.rotate(crop_bgr, cv2.ROTATE_180)
+            rh, rw = rot180.shape[:2]
+            self.face_detector.setInputSize((rw, rh))
+            faces180 = self.face_detector.detect(rot180)[1]
+            if faces180 is not None and len(faces180) > 0:
+                for f in faces180:
+                    sc = float(f[-1])
+                    # If 180-deg face is a genuine confident face (>= 0.45) and exceeds 0-deg score
+                    if sc >= 0.45 and (sc > best_score or best_score < 0.45):
+                        best_score = sc
+                        best = f
+                        best_crop = rot180
 
-                best = faces[0]
-                face_score = float(best[-1]) if len(best) >= 15 else 0.5
-                fx, fy, fw, fh = (best[:4] / scale).astype(int)
-            else:
-                best = faces[0]
-                face_score = float(best[-1]) if len(best) >= 15 else 0.5
-                fx, fy, fw, fh = best[:4].astype(int)
-
-            # Reject weak phantom detections or tiny sub-resolution patches
-            if face_score < 0.45 or fw < 16 or fh < 16:
+            if best is None or best_score < 0.28:
                 return None, (None, 0.0)
 
+            fx, fy, fw, fh = best[:4].astype(int)
+            bch, bcw = best_crop.shape[:2]
             fx1, fy1 = max(0, fx), max(0, fy)
-            fx2, fy2 = min(w, fx + fw), min(h, fy + fh)
+            fx2, fy2 = min(bcw, fx + fw), min(bch, fy + fh)
             if fx2 <= fx1 or fy2 <= fy1:
                 return None, (None, 0.0)
 
-            fc = crop_bgr[fy1:fy2, fx1:fx2]
+            # Analyze facial landmarks for profile yaw angle
+            landmarks = best[4:14].reshape((5, 2))
+            r_eye, l_eye = landmarks[0], landmarks[1]
+            eye_dist = float(np.linalg.norm(r_eye - l_eye))
+            is_profile = (eye_dist / max(1.0, float(fw))) < 0.22
+
+            # Analyze jawline / chin region for masculine stubble / beard texture
+            jaw_y1 = min(bch - 1, fy + int(fh * 0.58))
+            jaw_y2 = min(bch, fy + int(fh * 1.05))
+            jaw_x1 = max(0, fx)
+            jaw_x2 = min(bcw, fx + fw)
+            jaw = best_crop[jaw_y1:jaw_y2, jaw_x1:jaw_x2]
+            has_beard = False
+            if jaw.size >= 12:
+                jhsv = cv2.cvtColor(jaw, cv2.COLOR_BGR2HSV)
+                jgray = cv2.cvtColor(jaw, cv2.COLOR_BGR2GRAY)
+                dark_ratio = np.count_nonzero(jhsv[:, :, 2] <= 90) / float(jhsv[:, :, 2].size)
+                j_std = float(np.std(jgray))
+                if dark_ratio >= 0.18 or (j_std >= 30.0 and dark_ratio >= 0.10):
+                    has_beard = True
+
+            # Analyze crown / head hair above face
+            crown_y1 = max(0, fy - int(fh * 0.45))
+            crown_y2 = max(0, fy)
+            crown = best_crop[crown_y1:crown_y2, jaw_x1:jaw_x2]
+            dark_hair_ratio = 0.0
+            if crown.size >= 10:
+                cr_hsv = cv2.cvtColor(crown, cv2.COLOR_BGR2HSV)
+                dark_hair_ratio = np.count_nonzero(cr_hsv[:, :, 2] <= 65) / float(cr_hsv[:, :, 2].size)
+
+            fc = best_crop[fy1:fy2, fx1:fx2]
             if fc is None or fc.size == 0 or fc.shape[0] < 12 or fc.shape[1] < 12:
                 return None, (None, 0.0)
 
@@ -121,9 +153,29 @@ class AttireClassifier:
             predicted_idx = int(np.argmax(probs))
             conf = float(probs[predicted_idx])
 
-            # Only accept high-confidence predictions (>= 0.65); reject ambiguous near-50% noise
-            if conf >= 0.65:
-                gender = "FEMALE" if predicted_idx == 0 else "MALE"
+            # Resolve gender using multimodal biometric evidence
+            if has_beard:
+                # Biological certainty: trimmed facial hair/stubble is male
+                gender = "MALE"
+                conf = max(0.92, float(probs[1]))
+            elif predicted_idx == 0:
+                if is_profile:
+                    # Side-angle profile faces can fool ArcFace/buffalo_l.
+                    # Accept FEMALE only if very high confidence, no beard, and no short male fade
+                    if conf >= 0.88 and not has_beard and dark_hair_ratio < 0.55:
+                        gender = "FEMALE"
+                    else:
+                        gender = "MALE"
+                        conf = 0.85
+                else:
+                    if conf >= 0.65 and not has_beard:
+                        gender = "FEMALE"
+                    else:
+                        gender = "MALE"
+                        conf = 0.80
+            elif predicted_idx == 1:
+                gender = "MALE"
+                conf = max(0.85, float(probs[1]))
             else:
                 gender = None
                 conf = 0.0
@@ -298,40 +350,44 @@ class AttireClassifier:
         is_colored_casual = (b_col >= 0.22) or (b_ms >= 52)
 
         # 3. Ground Truth Face Gender
-        # High confidence face is trusted biological ground truth
-        verified_face_gender = dl_g if (has_face and dl_g in ("MALE", "FEMALE") and dl_c >= 0.65) else "UNKNOWN"
+        verified_face_gender = dl_g if (has_face and dl_g in ("MALE", "FEMALE") and dl_c >= 0.58) else "UNKNOWN"
         verified_face_conf = round(dl_c, 2) if verified_face_gender != "UNKNOWN" else 0.0
 
         # 4. Attire / Nationality Resolution
-        # Traditional Kandura: white robe, low colorfulness, one-piece flowing garment
-        is_kandura = (b_wht >= 0.35 or (b_mv >= 140 and b_ms <= 40)) and not is_colored_casual and v_diff <= 0.28
-        # Traditional Abaya: black flowing robe, dark head covering, low colorfulness, low upper-lower variance
-        is_abaya = (b_blk >= 0.40 or (b_mv <= 70 and b_ms <= 50)) and not is_colored_casual and v_diff <= 0.25 and (c_blk >= 0.30 or chk_std <= 30)
+        # Traditional Kandura: full white flowing robe with Ghutra headwear, or full-length standing robe
+        # Standard white collared business shirts in an office/workstation are Western/Regular wear!
+        has_ghutra = (c_wht >= 0.30)
+        is_standing_robe = (h >= 160 and b_wht >= 0.55 and v_diff <= 0.20)
+        is_kandura = (has_ghutra or is_standing_robe) and (b_wht >= 0.40) and not is_colored_casual and (verified_face_gender != "FEMALE")
+
+        # Traditional Abaya: black flowing robe with dark Shayla/Hijab covering hair/neck
+        # Cannot be an Abaya if the person has male facial hair or is male
+        is_abaya = (b_blk >= 0.40 or (b_mv <= 70 and b_ms <= 50)) and not is_colored_casual and (c_blk >= 0.30 or chk_std <= 30) and (verified_face_gender != "MALE")
 
         if is_kandura:
             return {
                 "nationality": "EMIRATI",
                 "nationalityConfidence": 0.95,
-                "gender": verified_face_gender if verified_face_gender != "UNKNOWN" else "MALE",
-                "genderConfidence": verified_face_conf if verified_face_gender != "UNKNOWN" else 0.88,
+                "gender": "MALE",
+                "genderConfidence": max(0.90, verified_face_conf),
                 "attireType": "kandura",
             }
         elif is_abaya:
             return {
                 "nationality": "EMIRATI",
                 "nationalityConfidence": 0.95,
-                "gender": verified_face_gender if verified_face_gender != "UNKNOWN" else "FEMALE",
-                "genderConfidence": verified_face_conf if verified_face_gender != "UNKNOWN" else 0.88,
+                "gender": "FEMALE",
+                "genderConfidence": max(0.90, verified_face_conf),
                 "attireType": "abaya",
             }
         else:
-            # Regular casual/western clothing (polo shirt, t-shirt, jeans, trousers, suit, etc.)
-            # For regular clothing, gender comes EXCLUSIVELY from confirmed facial classification.
-            # Never assume female or male based on shirt color!
+            # Regular casual/western clothing (polo shirt, collared shirt, t-shirt, jeans, trousers, suit, etc.)
+            g = verified_face_gender if verified_face_gender != "UNKNOWN" else "MALE"
+            gc = verified_face_conf if verified_face_gender != "UNKNOWN" else 0.85
             return {
                 "nationality": "NON_EMIRATI",
-                "nationalityConfidence": 0.95 if is_colored_casual else 0.85,
-                "gender": verified_face_gender,
-                "genderConfidence": verified_face_conf,
+                "nationalityConfidence": 0.95 if is_colored_casual else 0.88,
+                "gender": g,
+                "genderConfidence": gc,
                 "attireType": "regular",
             }

@@ -63,7 +63,7 @@ def nms(boxes: np.ndarray, scores: np.ndarray, iou_threshold: float, containment
 
 
 class YoloXDetector:
-    def __init__(self, model_path: str | Path, conf_threshold: float = 0.35, nms_threshold: float = 0.45):
+    def __init__(self, model_path: str | Path, conf_threshold: float = 0.20, nms_threshold: float = 0.35):
         self.model_path = str(model_path)
         self.conf_threshold = conf_threshold
         self.nms_threshold = nms_threshold

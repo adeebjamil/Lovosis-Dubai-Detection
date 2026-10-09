@@ -118,6 +118,14 @@ class DetectorService:
                     break
                 try:
                     live_payload, finished_tracks = worker.process_frame()
+                    now = time.time()
+                    if not hasattr(worker, "_last_status_log") or now - worker._last_status_log >= 3.0:
+                        worker._last_status_log = now
+                        if live_payload:
+                            lp = live_payload["counts"]["live"]
+                            bx_cnt = len(live_payload.get("boxes", []))
+                            print(f"[detector] {worker.code} -> live: {lp['persons']} (M:{lp['male']}, F:{lp['female']}), boxes: {bx_cnt}")
+
                     if live_payload and self.sio.connected:
                         self.sio.emit("detections:frame", live_payload, namespace="/detector")
 

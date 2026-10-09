@@ -23,6 +23,7 @@ import { toast } from "@/store/toast";
 import EmptyState from "@/components/ui/EmptyState";
 import WebRtcPlayer from "./WebRtcPlayer";
 import DetectionOverlay from "./DetectionOverlay";
+import CctvDetailsBar from "./CctvDetailsBar";
 
 const LAYOUTS = [1, 2, 3, 4] as const; // n×n
 type Layout = (typeof LAYOUTS)[number] | "auto";
@@ -55,33 +56,37 @@ function LiveTile({ camera, showOverlay }: { camera: Camera; showOverlay: boolea
   };
 
   return (
-    <div className="live-tile relative overflow-hidden" id={`live-tile-${camera.code}`} onDoubleClick={fullscreen}>
-      {playable ? (
-        <div className="relative h-full w-full">
-          <WebRtcPlayer cameraId={camera.id} label={camera.name} />
-          <DetectionOverlay camera={camera} showOverlay={showOverlay} />
+    <div className="live-tile relative overflow-hidden flex flex-col" id={`live-tile-${camera.code}`}>
+      <div className="relative aspect-video w-full bg-black overflow-hidden flex-shrink-0" onDoubleClick={fullscreen}>
+        {playable ? (
+          <>
+            <WebRtcPlayer cameraId={camera.id} label={camera.name} />
+            <DetectionOverlay camera={camera} showOverlay={showOverlay} />
+          </>
+        ) : (
+          <div className="live-tile-center">
+            <FontAwesomeIcon icon={faVideoSlash} className="text-2xl text-gray-600" />
+            <span>{camera.enabled ? `${meta.label}${camera.status === "CONNECTING" ? "…" : ""}` : "Camera disabled"}</span>
+            {camera.lastError && camera.status !== "CONNECTING" && (
+              <span className="max-w-xs text-xs text-gray-600">{camera.lastError}</span>
+            )}
+          </div>
+        )}
+        <div className="live-tile-bar z-20">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className={`status-dot ${meta.color}`} aria-label={meta.label} />
+            <span className="truncate">{camera.code} · {camera.name}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-3">
+            {camera.width && camera.height && <span className="hidden sm:inline">{camera.width}×{camera.height}</span>}
+            <button type="button" onClick={fullscreen} className="text-white/80 hover:text-white" aria-label={`Fullscreen ${camera.name}`}>
+              <FontAwesomeIcon icon={faExpand} />
+            </button>
+          </span>
         </div>
-      ) : (
-        <div className="live-tile-center">
-          <FontAwesomeIcon icon={faVideoSlash} className="text-2xl text-gray-600" />
-          <span>{camera.enabled ? `${meta.label}${camera.status === "CONNECTING" ? "…" : ""}` : "Camera disabled"}</span>
-          {camera.lastError && camera.status !== "CONNECTING" && (
-            <span className="max-w-xs text-xs text-gray-600">{camera.lastError}</span>
-          )}
-        </div>
-      )}
-      <div className="live-tile-bar z-20">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className={`status-dot ${meta.color}`} aria-label={meta.label} />
-          <span className="truncate">{camera.code} · {camera.name}</span>
-        </span>
-        <span className="flex shrink-0 items-center gap-3">
-          {camera.width && camera.height && <span className="hidden sm:inline">{camera.width}×{camera.height}</span>}
-          <button type="button" onClick={fullscreen} className="text-white/80 hover:text-white" aria-label={`Fullscreen ${camera.name}`}>
-            <FontAwesomeIcon icon={faExpand} />
-          </button>
-        </span>
       </div>
+      {/* Attached Rectangular Details Box Below CCTV Video */}
+      {playable && <CctvDetailsBar camera={camera} />}
     </div>
   );
 }

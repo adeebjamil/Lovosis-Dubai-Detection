@@ -3,11 +3,13 @@
 import { useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faBorderAll,
   faCheck,
   faDrawPolygon,
   faExpand,
   faFloppyDisk,
   faRotateRight,
+  faSquare,
   faTrashCan,
   faVideo,
 } from "@fortawesome/free-solid-svg-icons";
@@ -26,7 +28,17 @@ export default function ZoneEditor({ camera, onUpdate }: ZoneEditorProps) {
   );
   const [snapshotKey, setSnapshotKey] = useState<number>(0);
   const [saving, setSaving] = useState(false);
+
+  // Dragging individual corner handles
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+
+  // Dragging to draw a new zone box
+  const [boxStart, setBoxStart] = useState<[number, number] | null>(null);
+  const [boxCurrent, setBoxCurrent] = useState<[number, number] | null>(null);
+
+  // Moving the entire zone box
+  const [movingZoneStart, setMovingZoneStart] = useState<[number, number] | null>(null);
+  const [initialZonePoints, setInitialZonePoints] = useState<[number, number][]>([]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -34,61 +46,148 @@ export default function ZoneEditor({ camera, onUpdate }: ZoneEditorProps) {
     setSnapshotKey((prev) => prev + 1);
   };
 
-  const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (zoneMode !== "CUSTOM") return;
-    if (draggingIdx !== null) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-
-    if (points.length >= 20) {
-      toast.error("Maximum 20 points allowed for custom zone");
-      return;
-    }
-
-    setPoints((prev) => [...prev, [Number(x.toFixed(4)), Number(y.toFixed(4))]]);
-  };
-
-  const handlePointerDown = (idx: number, e: React.PointerEvent) => {
-    e.stopPropagation();
-    setDraggingIdx(idx);
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (draggingIdx === null || !containerRef.current) return;
+  const getNormCoords = (e: React.PointerEvent | React.MouseEvent): [number, number] => {
+    if (!containerRef.current) return [0, 0];
     const rect = containerRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-
-    setPoints((prev) => {
-      const next = [...prev];
-      next[draggingIdx] = [Number(x.toFixed(4)), Number(y.toFixed(4))];
-      return next;
-    });
+    return [Number(x.toFixed(4)), Number(y.toFixed(4))];
   };
 
-  const handlePointerUp = (e: React.PointerEvent) => {
-    if (draggingIdx !== null) {
-      try {
-        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {
-        // ignore
-      }
-      setDraggingIdx(null);
+  const handlePointerDownContainer = (e: React.PointerEvent) => {
+    if (zoneMode !== "CUSTOM") return;
+    if (draggingIdx !== null || movingZoneStart !== null) return;
+
+    const [x, y] = getNormCoords(e);
+    // Initiating drag to draw a box
+    setBoxStart([x, y]);
+    setBoxCurrent([x, y]);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
     }
   };
 
-  const handleRemovePoint = (idx: number, e: React.MouseEvent) => {
-    e.preventDefault();
+  const handlePointerMoveContainer = (e: React.PointerEvent) => {
+    if (zoneMode !== "CUSTOM") return;
+    const [x, y] = getNormCoords(e);
+
+    // 1. Updating box drag
+    if (boxStart) {
+      setBoxCurrent([x, y]);
+      return;
+    }
+
+    // 2. Dragging a single corner handle
+    if (draggingIdx !== null) {
+      setPoints((prev) => {
+        const next = [...prev];
+        next[draggingIdx] = [x, y];
+        return next;
+      });
+      return;
+    }
+
+    // 3. Moving the entire zone box
+    if (movingZoneStart && initialZonePoints.length > 0) {
+      const dx = x - movingZoneStart[0];
+      const dy = y - movingZoneStart[1];
+      setPoints(
+        initialZonePoints.map(([px, py]) => [
+          Math.max(0, Math.min(1, Number((px + dx).toFixed(4)))),
+          Math.max(0, Math.min(1, Number((py + dy).toFixed(4)))),
+        ])
+      );
+    }
+  };
+
+  const handlePointerUpContainer = (e: React.PointerEvent) => {
+    // Finish drawing box
+    if (boxStart && boxCurrent) {
+      const w = Math.abs(boxCurrent[0] - boxStart[0]);
+      const h = Math.abs(boxCurrent[1] - boxStart[1]);
+
+      if (w > 0.02 && h > 0.02) {
+        const x1 = Number(Math.min(boxStart[0], boxCurrent[0]).toFixed(4));
+        const y1 = Number(Math.min(boxStart[1], boxCurrent[1]).toFixed(4));
+        const x2 = Number(Math.max(boxStart[0], boxCurrent[0]).toFixed(4));
+        const y2 = Number(Math.max(boxStart[1], boxCurrent[1]).toFixed(4));
+
+        setPoints([
+          [x1, y1], // 1: top-left
+          [x2, y1], // 2: top-right
+          [x2, y2], // 3: bottom-right
+          [x1, y2], // 4: bottom-left
+        ]);
+        toast.success("Zone box drawn! Drag corners to fine-tune or drag the box to move it.");
+      }
+      setBoxStart(null);
+      setBoxCurrent(null);
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+    }
+
+    // Finish dragging single handle
+    if (draggingIdx !== null) {
+      setDraggingIdx(null);
+    }
+
+    // Finish moving entire zone
+    if (movingZoneStart !== null) {
+      setMovingZoneStart(null);
+    }
+  };
+
+  const handleHandlePointerDown = (idx: number, e: React.PointerEvent) => {
     e.stopPropagation();
-    setPoints((prev) => prev.filter((_, i) => i !== idx));
+    setDraggingIdx(idx);
+    try {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleHandlePointerUp = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    setDraggingIdx(null);
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handlePolygonBodyPointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    const [x, y] = getNormCoords(e);
+    setMovingZoneStart([x, y]);
+    setInitialZonePoints([...points]);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handlePresetCenterBox = () => {
+    setZoneMode("CUSTOM");
+    setPoints([
+      [0.2, 0.2],
+      [0.8, 0.2],
+      [0.8, 0.8],
+      [0.2, 0.8],
+    ]);
+    toast.success("Center box preset applied! Drag corners or body as needed.");
   };
 
   const handleSave = async () => {
     if (zoneMode === "CUSTOM" && points.length > 0 && points.length < 3) {
-      toast.error("A custom zone polygon must have at least 3 points");
+      toast.error("A custom zone must have at least 3 points");
       return;
     }
 
@@ -101,7 +200,7 @@ export default function ZoneEditor({ camera, onUpdate }: ZoneEditorProps) {
 
       onUpdate(updated);
       toast.success(
-        `Zone saved for ${camera.code} (${zoneMode === "FULL_FRAME" ? "Full View" : "Custom Zone"})`
+        `Zone saved for ${camera.code} (${zoneMode === "FULL_FRAME" ? "Full CCTV View" : "Custom Box Zone"})`
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to save zone";
@@ -111,11 +210,23 @@ export default function ZoneEditor({ camera, onUpdate }: ZoneEditorProps) {
     }
   };
 
+  // Pure mathematical SVG path with 0..1000 coordinates (100% valid SVG syntax)
   const polygonPath =
-    points.length >= 2
-      ? points.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0] * 100}% ${p[1] * 100}%`).join(" ") +
-        (points.length >= 3 ? " Z" : "")
+    points.length >= 3
+      ? points
+          .map((p, i) => `${i === 0 ? "M" : "L"} ${Math.round(p[0] * 1000)} ${Math.round(p[1] * 1000)}`)
+          .join(" ") + " Z"
       : "";
+
+  // Active dragging box preview
+  let boxPreview: { x: number; y: number; w: number; h: number } | null = null;
+  if (boxStart && boxCurrent) {
+    const x = Math.min(boxStart[0], boxCurrent[0]);
+    const y = Math.min(boxStart[1], boxCurrent[1]);
+    const w = Math.abs(boxCurrent[0] - boxStart[0]);
+    const h = Math.abs(boxCurrent[1] - boxStart[1]);
+    boxPreview = { x, y, w, h };
+  }
 
   return (
     <div className="space-y-6">
@@ -132,11 +243,11 @@ export default function ZoneEditor({ camera, onUpdate }: ZoneEditorProps) {
               type="button"
               onClick={() => setZoneMode("FULL_FRAME")}
               className={`flex items-center gap-2 rounded-md px-3.5 py-1.5 text-sm font-semibold transition ${
-                zoneMode === "FULL_FRAME" ? "bg-primary text-white shadow-sm" : "text-gray-600 hover:text-primary"
+                zoneMode === "FULL_FRAME" ? "bg-white text-primary shadow-sm" : "text-gray-600 hover:text-primary"
               }`}
             >
               <FontAwesomeIcon icon={faExpand} className="text-xs" />
-              Full View (Whole CCTV)
+              Full Frame
             </button>
             <button
               type="button"
@@ -145,10 +256,18 @@ export default function ZoneEditor({ camera, onUpdate }: ZoneEditorProps) {
                 zoneMode === "CUSTOM" ? "bg-secondary text-white shadow-sm" : "text-gray-600 hover:text-primary"
               }`}
             >
-              <FontAwesomeIcon icon={faDrawPolygon} className="text-xs" />
+              <FontAwesomeIcon icon={faSquare} className="text-xs" />
               Custom Zone
             </button>
           </div>
+
+          {/* Mode Indicator Pill when Custom Zone is selected */}
+          {zoneMode === "CUSTOM" && (
+            <div className="inline-flex items-center gap-2 rounded-full bg-cyan-50 border border-cyan-200 px-3 py-1 text-xs font-semibold text-cyan-800 shadow-sm">
+              <span className="h-2 w-2 rounded-full bg-cyan-500 animate-pulse" />
+              Drag to Draw Box
+            </div>
+          )}
         </div>
 
         {/* Action buttons */}
@@ -164,15 +283,26 @@ export default function ZoneEditor({ camera, onUpdate }: ZoneEditorProps) {
           </button>
 
           {zoneMode === "CUSTOM" && (
-            <button
-              type="button"
-              onClick={() => setPoints([])}
-              className="btn btn-outline-danger btn-sm flex items-center gap-1.5"
-              title="Clear all points"
-            >
-              <FontAwesomeIcon icon={faTrashCan} />
-              Clear Points
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handlePresetCenterBox}
+                className="btn btn-outline-secondary btn-sm flex items-center gap-1.5"
+                title="Apply center rectangular zone"
+              >
+                <FontAwesomeIcon icon={faBorderAll} />
+                Center Preset
+              </button>
+              <button
+                type="button"
+                onClick={() => setPoints([])}
+                className="btn btn-outline-danger btn-sm flex items-center gap-1.5"
+                title="Clear zone box"
+              >
+                <FontAwesomeIcon icon={faTrashCan} />
+                Clear
+              </button>
+            </>
           )}
 
           <button
@@ -197,9 +327,9 @@ export default function ZoneEditor({ camera, onUpdate }: ZoneEditorProps) {
                 Full CCTV view is active — all detections across the entire camera frame are counted.
               </span>
             ) : (
-              <span className="font-medium text-gray-700">
-                Click anywhere on the frame to add polygon corners. Drag points to adjust. Right-click point to delete. (
-                {points.length} points defined)
+              <span className="font-medium text-gray-700 flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-secondary animate-pulse" />
+                <strong className="text-secondary">Drag to Draw Box:</strong> Click and drag anywhere on the video to draw your custom zone. Drag corner handles or the body to adjust.
               </span>
             )}
           </div>
@@ -208,7 +338,15 @@ export default function ZoneEditor({ camera, onUpdate }: ZoneEditorProps) {
           </div>
         </div>
 
-        <div className="relative aspect-video w-full bg-black select-none" ref={containerRef} onPointerMove={handlePointerMove}>
+        <div
+          className={`relative aspect-video w-full bg-black select-none ${
+            zoneMode === "CUSTOM" ? "cursor-crosshair" : ""
+          }`}
+          ref={containerRef}
+          onPointerDown={handlePointerDownContainer}
+          onPointerMove={handlePointerMoveContainer}
+          onPointerUp={handlePointerUpContainer}
+        >
           {/* Camera snapshot background */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -229,66 +367,135 @@ export default function ZoneEditor({ camera, onUpdate }: ZoneEditorProps) {
             </div>
           </div>
 
-          {/* SVG Overlay for Zone Polygon */}
+          {/* SVG Overlay for Zone Polygon and Box Drawing */}
           <svg
-            className={`absolute inset-0 h-full w-full ${zoneMode === "CUSTOM" ? "cursor-crosshair" : "pointer-events-none"}`}
-            onClick={handleSvgClick}
+            className="absolute inset-0 h-full w-full pointer-events-none"
+            viewBox="0 0 1000 1000"
+            preserveAspectRatio="none"
           >
             {zoneMode === "FULL_FRAME" ? (
               <rect
-                x="1.5%"
-                y="1.5%"
-                width="97%"
-                height="97%"
+                x="15"
+                y="15"
+                width="970"
+                height="970"
                 fill="rgba(46, 204, 113, 0.08)"
                 stroke="#2ecc71"
-                strokeWidth="3"
-                strokeDasharray="8 6"
+                strokeWidth="3.5"
+                strokeDasharray="10 6"
+                vectorEffect="non-scaling-stroke"
                 rx="6"
               />
             ) : (
               <>
+                {/* Established Zone Box with High-Contrast Dotted Cyan Boundary Line */}
                 {polygonPath && (
                   <path
                     d={polygonPath}
-                    fill="rgba(23, 165, 206, 0.25)"
+                    fill="rgba(23, 165, 206, 0.22)"
                     stroke="#17A5CE"
-                    strokeWidth="3"
+                    strokeWidth="3.5"
+                    strokeDasharray="10 6"
                     strokeLinejoin="round"
                     strokeLinecap="round"
-                  />
+                    vectorEffect="non-scaling-stroke"
+                    className="pointer-events-auto cursor-move transition-colors hover:fill-[rgba(23,165,206,0.32)]"
+                    onPointerDown={handlePolygonBodyPointerDown}
+                  >
+                    <title>Click and drag to move the entire zone box</title>
+                  </path>
                 )}
 
-                {points.map((pt, idx) => (
-                  <g key={idx}>
+                {/* Move Hint icon in center of zone box */}
+                {points.length >= 3 && (
+                  <g className="pointer-events-none opacity-80">
                     <circle
-                      cx={`${pt[0] * 100}%`}
-                      cy={`${pt[1] * 100}%`}
-                      r="7"
-                      fill="#FFFFFF"
-                      stroke="#17A5CE"
-                      strokeWidth="3"
-                      className="cursor-move hover:r-9 transition-all"
-                      onPointerDown={(e) => handlePointerDown(idx, e)}
-                      onPointerUp={handlePointerUp}
-                      onContextMenu={(e) => handleRemovePoint(idx, e)}
+                      cx={Math.round((points.reduce((a, b) => a + b[0], 0) / points.length) * 1000)}
+                      cy={Math.round((points.reduce((a, b) => a + b[1], 0) / points.length) * 1000)}
+                      r="16"
+                      fill="#17A5CE"
+                      vectorEffect="non-scaling-stroke"
                     />
                     <text
-                      x={`${pt[0] * 100}%`}
-                      y={`${pt[1] * 100 - 1.5}%`}
+                      x={Math.round((points.reduce((a, b) => a + b[0], 0) / points.length) * 1000)}
+                      y={Math.round((points.reduce((a, b) => a + b[1], 0) / points.length) * 1000 + 4)}
                       textAnchor="middle"
+                      dominantBaseline="middle"
                       fill="#FFFFFF"
-                      fontSize="10"
+                      fontSize="14"
                       fontWeight="bold"
-                      className="pointer-events-none"
                     >
-                      {idx + 1}
+                      ✥
                     </text>
+                  </g>
+                )}
+
+                {/* Live Dragging Box Preview */}
+                {boxPreview && (
+                  <g className="pointer-events-none">
+                    <rect
+                      x={Math.round(boxPreview.x * 1000)}
+                      y={Math.round(boxPreview.y * 1000)}
+                      width={Math.round(boxPreview.w * 1000)}
+                      height={Math.round(boxPreview.h * 1000)}
+                      fill="rgba(23, 165, 206, 0.25)"
+                      stroke="#17A5CE"
+                      strokeWidth="3"
+                      strokeDasharray="8 6"
+                      vectorEffect="non-scaling-stroke"
+                      rx="4"
+                    />
+                  </g>
+                )}
+
+                {/* Corner Vertex Handles (1, 2, 3, 4) */}
+                {points.map((pt, idx) => (
+                  <g key={idx} className="pointer-events-auto">
+                    {/* Pulsing halo ring */}
+                    <circle
+                      cx={Math.round(pt[0] * 1000)}
+                      cy={Math.round(pt[1] * 1000)}
+                      r="16"
+                      fill="none"
+                      stroke="#17A5CE"
+                      strokeWidth="2"
+                      strokeDasharray="4 3"
+                      vectorEffect="non-scaling-stroke"
+                      className="opacity-80"
+                    />
+                    {/* Draggable Circle Handle */}
+                    <circle
+                      cx={Math.round(pt[0] * 1000)}
+                      cy={Math.round(pt[1] * 1000)}
+                      r="10"
+                      fill="#FFFFFF"
+                      stroke="#17A5CE"
+                      strokeWidth="3.5"
+                      vectorEffect="non-scaling-stroke"
+                      className="cursor-move hover:scale-125 transition-transform"
+                      onPointerDown={(e) => handleHandlePointerDown(idx, e)}
+                      onPointerUp={handleHandlePointerUp}
+                    />
                   </g>
                 ))}
               </>
             )}
           </svg>
+
+          {/* HTML Corner Badges (1, 2, 3, 4) with crisp fonts */}
+          {zoneMode === "CUSTOM" &&
+            points.map((pt, idx) => (
+              <div
+                key={idx}
+                className="absolute pointer-events-none select-none -translate-x-1/2 -translate-y-[170%] bg-[#17A5CE] text-white text-[10px] font-bold font-mono px-1 rounded shadow"
+                style={{
+                  left: `${pt[0] * 100}%`,
+                  top: `${pt[1] * 100}%`,
+                }}
+              >
+                {idx + 1}
+              </div>
+            ))}
         </div>
       </div>
     </div>

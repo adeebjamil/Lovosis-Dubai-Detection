@@ -6,10 +6,30 @@ import { camerasApi, type Camera, type CameraStatusUpdate } from "@/lib/cameras"
 import { acquireSocket, releaseSocket } from "@/lib/socket";
 
 const FALLBACK_POLL_MS = 30_000;
+const CACHE_KEY = "lovosis_cached_cameras";
+
+function getCachedCameras(): Camera[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedCameras(cams: Camera[]) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(cams));
+  } catch {
+    // ignore
+  }
+}
 
 /** Camera list + realtime status pushes ("cameras:status") with a slow polling fallback. */
 export function useCameras() {
-  const [cameras, setCameras] = useState<Camera[] | null>(null);
+  const [cameras, setCameras] = useState<Camera[] | null>(() => getCachedCameras());
   const [limit, setLimit] = useState(32);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,6 +37,7 @@ export function useCameras() {
     try {
       const d = await camerasApi.list();
       setCameras(d.cameras);
+      setCachedCameras(d.cameras);
       setLimit(d.limit);
       setError(null);
     } catch (e) {
@@ -32,6 +53,7 @@ export function useCameras() {
         .then((d) => {
           if (!active) return;
           setCameras(d.cameras);
+          setCachedCameras(d.cameras);
           setLimit(d.limit);
           setError(null);
         })

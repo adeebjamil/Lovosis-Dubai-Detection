@@ -29,145 +29,133 @@ export default function DetectionOverlay({ camera, showOverlay }: OverlayProps) 
 
   if (!frame) return null;
 
-  const live = frame.counts.live;
   const boxes = frame.boxes || [];
   const customPoints = (camera.customZonePoints ?? []) as [number, number][];
 
+  // Pure mathematical SVG path with 0..1000 coordinates (100% valid SVG syntax, no % symbols)
   const zonePath =
     camera.zoneMode === "CUSTOM" && customPoints.length >= 3
-      ? customPoints.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0] * 100}% ${p[1] * 100}%`).join(" ") + " Z"
+      ? customPoints
+          .map((p, i) => `${i === 0 ? "M" : "L"} ${Math.round(p[0] * 1000)} ${Math.round(p[1] * 1000)}`)
+          .join(" ") + " Z"
       : null;
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-2">
-      {/* Top live counter chip */}
-      <div className="flex flex-wrap items-center gap-1.5 self-start">
-        <span className="rounded bg-black/75 px-2 py-0.5 font-mono text-[11px] font-semibold text-white shadow backdrop-blur-sm">
-          👥 Live: {live.persons}
-        </span>
-        {(live.male > 0 || live.female > 0) && (
-          <span className="rounded bg-black/75 px-2 py-0.5 font-mono text-[11px] font-medium text-cyan-300 shadow backdrop-blur-sm">
-            ♂ {live.male} · ♀ {live.female}
-          </span>
-        )}
-        {(live.emirati > 0 || live.nonEmirati > 0) && (
-          <span className="rounded bg-black/75 px-2 py-0.5 font-mono text-[11px] font-medium text-emerald-300 shadow backdrop-blur-sm">
-            🇦🇪 {live.emirati} · 👔 {live.nonEmirati}
-          </span>
-        )}
-        {live.pets > 0 && (
-          <span className="rounded bg-black/75 px-2 py-0.5 font-mono text-[11px] font-medium text-amber-300 shadow backdrop-blur-sm">
-            🐾 {live.pets} (🐕 {live.dogs} · 🐈 {live.cats})
-          </span>
-        )}
-      </div>
-
-      {/* SVG overlay for bounding boxes & custom zone outline */}
+    <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden select-none">
+      {/* SVG overlay strictly for bounding boxes & custom zone outline */}
       {showOverlay && (
-        <svg className="absolute inset-0 h-full w-full">
-          {/* Custom zone boundary line */}
+        <svg
+          className="absolute inset-0 h-full w-full pointer-events-none"
+          viewBox="0 0 1000 1000"
+          preserveAspectRatio="none"
+        >
+          {/* Custom zone dotted boundary line & shaded region */}
           {zonePath && (
             <path
               d={zonePath}
-              fill="rgba(23, 165, 206, 0.12)"
+              fill="rgba(23, 165, 206, 0.16)"
               stroke="#17A5CE"
-              strokeWidth="2"
-              strokeDasharray="4 3"
+              strokeWidth="2.5"
+              strokeDasharray="8 6"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
             />
           )}
 
-          {/* Detections */}
+          {/* Detections Bounding Boxes */}
           {boxes.map((b) => {
             const [x1, y1, x2, y2] = b.box;
-            const w = (x2 - x1) * 100;
-            const h = (y2 - y1) * 100;
-            const left = x1 * 100;
-            const top = y1 * 100;
+            const left = Math.round(x1 * 1000);
+            const top = Math.round(y1 * 1000);
+            const w = Math.round((x2 - x1) * 1000);
+            const h = Math.round((y2 - y1) * 1000);
 
-            let color = "#3B82F6"; // default blue
-            let tag: string = b.class;
-
+            let color = "#2563EB"; // default blue for male
             if (b.class === "PERSON") {
-              const genderPrefix = b.gender === "MALE" ? "♂ " : b.gender === "FEMALE" ? "♀ " : "";
-              if (b.nationality === "EMIRATI") {
-                color = "#10B981"; // emerald for Emirati traditional dress
-                tag = `${genderPrefix}Emirati`;
-              } else if (b.nationality === "NON_EMIRATI") {
-                color = "#2563EB"; // blue for regular clothes
-                tag = `${genderPrefix}Non-Emirati`;
+              if (b.gender === "FEMALE") {
+                color = "#EC4899"; // Vibrant Pink for Female
+              } else if (b.gender === "MALE") {
+                color = "#2563EB"; // Vibrant Blue for Male
               } else {
-                tag = genderPrefix ? `${genderPrefix}Person` : "Person";
+                color = "#0EA5E9"; // Cyan for unclassified person
               }
             } else if (b.class === "DOG") {
               color = "#F59E0B"; // amber for dog
-              tag = "🐕 Dog";
             } else if (b.class === "CAT") {
               color = "#EC4899"; // pink for cat
+            }
+
+            return (
+              <rect
+                key={b.trackId}
+                x={left}
+                y={top}
+                width={w}
+                height={h}
+                fill={color === "#EC4899" ? "rgba(236, 72, 153, 0.04)" : "rgba(37, 99, 235, 0.04)"}
+                stroke={color}
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+                rx="4"
+              />
+            );
+          })}
+        </svg>
+      )}
+
+      {/* HTML Micro-Badges for Detected Targets */}
+      {showOverlay && (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          {boxes.map((b) => {
+            const [x1, y1] = b.box;
+            let color = "#2563EB";
+            let tag: string = b.class;
+
+            if (b.class === "PERSON") {
+              if (b.gender === "FEMALE") {
+                color = "#EC4899";
+                tag = "♀ Female";
+              } else if (b.gender === "MALE") {
+                color = "#2563EB";
+                tag = "♂ Male";
+              } else {
+                color = "#0EA5E9";
+                tag = "Person";
+              }
+
+              if (b.nationality === "EMIRATI") {
+                tag += " (Emirati)";
+              }
+            } else if (b.class === "DOG") {
+              color = "#F59E0B";
+              tag = "🐕 Dog";
+            } else if (b.class === "CAT") {
+              color = "#EC4899";
               tag = "🐈 Cat";
             }
 
             const dwellText =
-              b.dwellSeconds != null
-                ? b.isCounted
-                  ? ` · ${Math.floor(b.dwellSeconds)}s`
-                  : ` · ${b.dwellSeconds.toFixed(1)}s`
-                : "";
-            const labelText = `#${b.trackId} ${tag} (${Math.round(b.confidence * 100)}%)${dwellText}`;
-            const badgeWidth = Math.max(78, labelText.length * 6.7 + 14);
-            const badgeTop = Math.max(0, top - 3.2);
+              b.dwellSeconds != null && b.dwellSeconds >= 2.0 ? ` · ${Math.floor(b.dwellSeconds)}s` : "";
+            const labelText = `#${b.trackId} ${tag} ${Math.round(b.confidence * 100)}%${dwellText}`;
 
             return (
-              <g key={b.trackId} className="detection-box-group">
-                {/* Main Bounding Box with smooth interpolation */}
-                <rect
-                  x={`${left}%`}
-                  y={`${top}%`}
-                  width={`${w}%`}
-                  height={`${h}%`}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth="2.5"
-                  rx="4"
-                  style={{
-                    transition: "all 0.08s ease-out",
-                    filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))",
-                  }}
-                />
-                {/* Header Tag Badge */}
-                <g
-                  style={{
-                    transition: "all 0.08s ease-out",
-                  }}
-                >
-                  <rect
-                    x={`${left}%`}
-                    y={`${badgeTop}%`}
-                    width={badgeWidth}
-                    height="19"
-                    rx="3"
-                    fill={color}
-                    style={{
-                      transition: "all 0.08s ease-out",
-                    }}
-                  />
-                  <text
-                    x={`${left + 0.8}%`}
-                    y={`${badgeTop + 2.2}%`}
-                    fill="#FFFFFF"
-                    fontSize="11"
-                    fontFamily="monospace"
-                    fontWeight="bold"
-                    style={{
-                      transition: "all 0.08s ease-out",
-                    }}
-                  >
-                    {labelText}
-                  </text>
-                </g>
-              </g>
+              <div
+                key={b.trackId}
+                className="absolute px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-white shadow-md whitespace-nowrap"
+                style={{
+                  left: `${x1 * 100}%`,
+                  top: `${y1 * 100}%`,
+                  transform: y1 > 0.035 ? "translateY(-100%)" : "translateY(0%)",
+                  backgroundColor: "rgba(10, 15, 30, 0.92)",
+                  border: `1px solid ${color}`,
+                }}
+              >
+                {labelText}
+              </div>
             );
           })}
-        </svg>
+        </div>
       )}
     </div>
   );

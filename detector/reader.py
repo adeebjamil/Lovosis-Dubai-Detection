@@ -15,7 +15,7 @@ class RtspReader:
         self.reconnect_delay = reconnect_delay
 
         self._lock = threading.Lock()
-        self._latest_frame: np.ndarray | null = None
+        self._latest_frame: np.ndarray | None = None
         self._running = False
         self._thread: threading.Thread | None = None
         self._connected = False
@@ -44,10 +44,8 @@ class RtspReader:
             return self._latest_frame.copy()
 
     def _worker(self):
-        # Set low-latency FFMPEG capture options in OpenCV
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
-            "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|max_delay;0"
-        )
+        # Reliable TCP transport for both H.264 and H.265 (HEVC) IP streams
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
 
         while self._running:
             cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
@@ -74,6 +72,9 @@ class RtspReader:
                         ret, frame = cap.retrieve()
                         if not ret or frame is None:
                             break
+                        # Reject dummy blank/grey frames (emitted during HEVC/H.265 keyframe sync)
+                        if float(np.std(frame[:80, :80])) < 3.0:
+                            continue
                         with self._lock:
                             self._latest_frame = frame
                         last_decode_time = now
