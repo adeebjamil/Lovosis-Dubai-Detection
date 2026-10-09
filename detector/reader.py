@@ -6,6 +6,10 @@ import time
 import cv2
 import numpy as np
 
+# Suppress verbose FFmpeg HEVC/H.265 decoder warnings to stderr
+os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "-8"
+os.environ["OPENCV_LOG_LEVEL"] = "OFF"
+
 
 class RtspReader:
     """Threaded RTSP frame reader that always delivers the latest frame (zero latency)."""
@@ -44,8 +48,8 @@ class RtspReader:
             return self._latest_frame.copy()
 
     def _worker(self):
-        # Reliable TCP transport for both H.264 and H.265 (HEVC) IP streams
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+        # Configure robust TCP transport and low-delay flags for H.264 & HEVC/H.265
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay"
 
         while self._running:
             cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
@@ -57,30 +61,21 @@ class RtspReader:
                 continue
 
             self._connected = True
-            last_decode_time = 0.0
 
             while self._running:
-                # 1. Grab incoming frame packet immediately (consumes from socket, ~0.05ms)
-                # This ensures the internal ffmpeg queue NEVER accumulates stale frames!
-                if not cap.grab():
+                # Read next frame sequentially. Sequential reading ensures FFmpeg's HEVC
+                # Decoded Picture Buffer (DPB) never drops intermediate reference frames (POC),
+                # completely eliminating "Could not find ref with POC 0" decoder errors.
+                ret, frame = cap.read()
+                if not ret or frame is None:
                     break
 
-                now = time.time()
-                # 2. Decode at ~20-25 FPS to deliver ultra-low latency frames
-                if now - last_decode_time >= 0.04:
-                    try:
-                        ret, frame = cap.retrieve()
-                        if not ret or frame is None:
-                            break
-                        # Reject dummy blank/grey frames (emitted during HEVC/H.265 keyframe sync)
-                        if float(np.std(frame[:80, :80])) < 3.0:
-                            continue
-                        with self._lock:
-                            self._latest_frame = frame
-                        last_decode_time = now
-                    except Exception as err:
-                        # Corrupted or incomplete frame over WAN; skip to next packet
-                        continue
+                # Reject blank/grey frames emitted during initial camera keyframe handshake
+                if float(np.std(frame[:80, :80])) < 3.0:
+                    continue
+
+                with self._lock:
+                    self._latest_frame = frame
 
             cap.release()
             self._connected = False

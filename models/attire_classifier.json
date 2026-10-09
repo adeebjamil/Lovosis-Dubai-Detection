@@ -1,21 +1,21 @@
 {
   "model_name": "UAE Attire & Cultural Identity Classifier (Deep Neural Network)",
-  "version": "v3.1791453308",
+  "version": "v3.1791552401",
   "architecture": "Deep 19-dim Multi-Modal Feature Vector + 48-Neuron ReLU Neural Network + Softmax",
-  "trained_at": "2026-10-08 09:55:08 UTC",
+  "trained_at": "2026-10-09 13:26:41 UTC",
   "dataset_source": "Authentic UAE Emirati Female Dataset (Female_emiratis) + Authentic Male Dataset (emirati_male_) + Western Casual Sets",
   "weights_file": "attire_classifier_weights.npz",
-  "total_training_samples": 64,
+  "total_training_samples": 82,
   "samples_per_category": {
     "emirati_female": 24,
     "emirati_male": 38,
-    "non_emirati": 2
+    "non_emirati": 20
   },
   "category_performance": {
     "emirati_female": {
       "total": 24,
-      "correct": 24,
-      "accuracy_pct": 100.0
+      "correct": 23,
+      "accuracy_pct": 95.8
     },
     "emirati_male": {
       "total": 38,
@@ -23,12 +23,12 @@
       "accuracy_pct": 100.0
     },
     "non_emirati": {
-      "total": 2,
-      "correct": 2,
+      "total": 20,
+      "correct": 20,
       "accuracy_pct": 100.0
     }
   },
-  "training_accuracy_pct": 100.0,
-  "training_duration_seconds": 1.1,
+  "training_accuracy_pct": 98.8,
+  "training_duration_seconds": 18.86,
   "status": "ACTIVE_PRODUCTION"
 }

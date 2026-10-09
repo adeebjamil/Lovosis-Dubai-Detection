@@ -12,6 +12,12 @@ COCO_CLASSES = {
     16: "DOG",
 }
 
+PER_CLASS_THRESHOLD = {
+    "PERSON": 0.20,
+    "DOG": 0.12,
+    "CAT": 0.12,
+}
+
 
 def nms(boxes: np.ndarray, scores: np.ndarray, iou_threshold: float, containment_threshold: float = 0.60) -> list[int]:
     """Pure numpy fast NMS with Part-in-Whole (nested limb/fragment) suppression."""
@@ -129,7 +135,7 @@ class YoloXDetector:
         class_scores = predictions[:, 5:]
 
         # Filter candidates by objectness first
-        mask = obj_scores > self.conf_threshold
+        mask = obj_scores > 0.12  # lowered to pass potential pet detections through
         if not np.any(mask):
             return []
 
@@ -140,7 +146,8 @@ class YoloXDetector:
         results = []
         for coco_id, class_name in COCO_CLASSES.items():
             scores = obj_scores * class_scores[:, coco_id]
-            cls_mask = scores >= self.conf_threshold
+            cls_thresh = PER_CLASS_THRESHOLD.get(class_name, self.conf_threshold)
+            cls_mask = scores >= cls_thresh
             if not np.any(cls_mask):
                 continue
 

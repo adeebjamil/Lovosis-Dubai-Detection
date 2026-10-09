@@ -353,15 +353,13 @@ class AttireClassifier:
         verified_face_gender = dl_g if (has_face and dl_g in ("MALE", "FEMALE") and dl_c >= 0.58) else "UNKNOWN"
         verified_face_conf = round(dl_c, 2) if verified_face_gender != "UNKNOWN" else 0.0
 
-        # 4. Attire / Nationality Resolution
-        # Traditional Kandura: full white flowing robe with Ghutra headwear, or full-length standing robe
-        # Standard white collared business shirts in an office/workstation are Western/Regular wear!
+        # 4. Rule-based strong-signal overrides for unambiguous traditional attire
+        # Kandura: full white flowing robe (high b_wht) with Ghutra (c_wht) or standing robe silhouette
         has_ghutra = (c_wht >= 0.30)
         is_standing_robe = (h >= 160 and b_wht >= 0.55 and v_diff <= 0.20)
         is_kandura = (has_ghutra or is_standing_robe) and (b_wht >= 0.40) and not is_colored_casual and (verified_face_gender != "FEMALE")
 
-        # Traditional Abaya: black flowing robe with dark Shayla/Hijab covering hair/neck
-        # Cannot be an Abaya if the person has male facial hair or is male
+        # Abaya: overwhelmingly black flowing robe with dark Shayla/Hijab
         is_abaya = (b_blk >= 0.40 or (b_mv <= 70 and b_ms <= 50)) and not is_colored_casual and (c_blk >= 0.30 or chk_std <= 30) and (verified_face_gender != "MALE")
 
         if is_kandura:
@@ -380,14 +378,58 @@ class AttireClassifier:
                 "genderConfidence": max(0.90, verified_face_conf),
                 "attireType": "abaya",
             }
-        else:
-            # Regular casual/western clothing (polo shirt, collared shirt, t-shirt, jeans, trousers, suit, etc.)
-            g = verified_face_gender if verified_face_gender != "UNKNOWN" else "MALE"
-            gc = verified_face_conf if verified_face_gender != "UNKNOWN" else 0.85
-            return {
-                "nationality": "NON_EMIRATI",
-                "nationalityConfidence": 0.95 if is_colored_casual else 0.88,
-                "gender": g,
-                "genderConfidence": gc,
-                "attireType": "regular",
-            }
+
+        # 5. MLP model inference — primary classifier for non-obvious attire
+        # BUG FIX: MLP was trained and loaded but never used in classify_crop().
+        # Now we run it as the primary nationality/gender decision for regular attire.
+        if self.has_mlp_model:
+            # Rebuild the full 19-dim feature vector (same as training)
+            feat, _, _ = self.extract_features(crop_bgr)
+            h1 = np.maximum(0.0, feat @ self.W1 + self.b1)
+            logits = h1 @ self.W2 + self.b2
+            exp_l = np.exp(logits - np.max(logits))
+            probs = exp_l / np.sum(exp_l)
+            # Classes: 0=emirati_female, 1=emirati_male, 2=non_emirati
+            pred_idx = int(np.argmax(probs))
+            pred_conf = float(probs[pred_idx])
+
+            if pred_idx == 0:  # emirati_female
+                nat = "EMIRATI"
+                nat_conf = round(pred_conf, 2)
+                g = verified_face_gender if verified_face_gender == "FEMALE" else "FEMALE"
+                gc = max(0.88, verified_face_conf)
+                attire = "abaya"
+            elif pred_idx == 1:  # emirati_male
+                nat = "EMIRATI"
+                nat_conf = round(pred_conf, 2)
+                g = verified_face_gender if verified_face_gender == "MALE" else "MALE"
+                gc = max(0.88, verified_face_conf)
+                attire = "kandura"
+            else:  # non_emirati
+                nat = "NON_EMIRATI"
+                nat_conf = round(pred_conf, 2)
+                g = verified_face_gender if verified_face_gender != "UNKNOWN" else "MALE"
+                gc = verified_face_conf if verified_face_gender != "UNKNOWN" else 0.82
+                attire = "regular"
+
+            # Only use MLP output if it's confident enough (> 0.55)
+            # Below that, fall back to rule-based default
+            if pred_conf >= 0.55:
+                return {
+                    "nationality": nat,
+                    "nationalityConfidence": nat_conf,
+                    "gender": g,
+                    "genderConfidence": gc,
+                    "attireType": attire,
+                }
+
+        # 6. Fallback: no MLP or low confidence — use face gender + NON_EMIRATI default
+        g = verified_face_gender if verified_face_gender != "UNKNOWN" else "MALE"
+        gc = verified_face_conf if verified_face_gender != "UNKNOWN" else 0.82
+        return {
+            "nationality": "NON_EMIRATI",
+            "nationalityConfidence": 0.95 if is_colored_casual else 0.80,
+            "gender": g,
+            "genderConfidence": gc,
+            "attireType": "regular",
+        }

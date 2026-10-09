@@ -96,6 +96,8 @@ def extract_features(crop: np.ndarray, clf: AttireClassifier) -> np.ndarray:
         if center_body.size == 0:
             center_body = crop
 
+    if center_body is None or center_body.size == 0 or center_body.shape[0] == 0 or center_body.shape[1] == 0:
+        center_body = crop
     bhsv = cv2.cvtColor(center_body, cv2.COLOR_BGR2HSV)
     bv, bs = bhsv[:, :, 2], bhsv[:, :, 1]
     tot = float(bv.size)

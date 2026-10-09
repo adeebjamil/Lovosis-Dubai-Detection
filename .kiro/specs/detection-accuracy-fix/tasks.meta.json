@@ -1,0 +1,142 @@
+{
+  "pbtResults": {
+    "1. Write bug condition exploration tests": {
+      "status": "passed",
+      "failingExample": "All 8 tests failed as expected on unfixed code:\n\n1A — dist=0.20 slips through unfixed `< 0.16` guard → is_dup=False (re-count fires)\n1B — IoU=0.2346 is NOT > 0.25 → both detections survive dedup (len=2, expected 1)\n1C — OR gate fires at frames=10, in_zone_duration=0.65s → should_count=True (premature)\n1D — CAM-001 hardcoded branch returns 'MALE' despite gender_scores={\"FEMALE\":2.5,\"MALE\":0.3}\n1E — CAM-002 left positional override returns 'FEMALE' despite gender_scores={\"MALE\":1.8,\"FEMALE\":0.2}\n1F — obj_score=0.16 filtered by 0.20 objectness gate → 0 CAT results (combined score 0.1504 lost)\n1G — DOG confidence=0.25 dropped by uniform 0.32 floor → valid_detections len=0\n1H — DOG from right-crop tile dropped by `r[\"class\"] == \"PERSON\"` guard → raw_detections len=0",
+      "lastRunTimestamp": 1791549454603
+    }
+  },
+  "executionHistory": {
+    "1. Write bug condition exploration tests": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549129090
+      },
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549155221
+      },
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549468155
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing fix)": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549129659
+      },
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549472894
+      },
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549716678
+      }
+    ],
+    "3.1 Fix YOLOX objectness pre-filter (Change 1 — `detector/yolox.py`)": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549133379
+      },
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549722187
+      },
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549781634
+      }
+    ],
+    "3.2 Add per-class confidence threshold in YOLOX detect loop (Change 2 — `detector/yolox.py`)": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549137119
+      },
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549786601
+      },
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549792532
+      }
+    ],
+    "3.3 Fix spatial dedup threshold (Change 3 — `detector/camera_worker.py`)": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549139758
+      }
+    ],
+    "3.4 Fix clean-detections IoU dedup threshold (Change 4 — `detector/camera_worker.py`)": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549140079
+      }
+    ],
+    "3.5 Fix counting confirmation gate from OR to AND (Change 5 — `detector/camera_worker.py`)": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549140250
+      }
+    ],
+    "3.6 Remove hardcoded gender branches for CAM-001 and CAM-002 (Change 6 — `detector/camera_worker.py`)": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549141421
+      }
+    ],
+    "3.7 Add per-class confidence filter for pets (Change 7 — `detector/camera_worker.py`)": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549141635
+      }
+    ],
+    "3.8 Extend high-resolution tiling to include DOG and CAT (Change 8 — `detector/camera_worker.py`)": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549142048
+      }
+    ],
+    "3.9 Verify bug condition exploration tests now pass": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549142404
+      }
+    ],
+    "3.10 Verify preservation property tests still pass": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549143132
+      }
+    ],
+    "4. Checkpoint — Ensure all tests pass": [
+      {
+        "executionId": "fc8c71ee-aec6-43d7-bf4c-d444feb103bd",
+        "chatSessionId": "sess_05cf8d5b-3770-4462-afb1-54d042a8bfc5",
+        "timestamp": 1791549143985
+      }
+    ]
+  }
+}

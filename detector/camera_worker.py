@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
@@ -352,7 +352,7 @@ class CameraWorker:
                     "cached_nat": nationality,
                     "cached_gconf": gender_conf,
                     "cached_nconf": nat_conf,
-                    "classified": (gender != "UNKNOWN" and gender_conf >= 0.75),
+                    "classified": (gender != "UNKNOWN" and gender_conf >= 0.65),
                     "box": norm_box,
                 }
             else:
@@ -372,7 +372,7 @@ class CameraWorker:
                     if nationality != "UNKNOWN":
                         tr["nat_scores"][nationality] = tr["nat_scores"].get(nationality, 0.0) + nat_conf
 
-                    if gender != "UNKNOWN" and gender_conf >= 0.75:
+                    if gender != "UNKNOWN" and gender_conf >= 0.65:
                         tr["classified"] = True
 
                     tr["cached_gender"] = gender
@@ -390,9 +390,9 @@ class CameraWorker:
                 female_score = tr["gender_scores"].get("FEMALE", 0.0)
 
                 # Derive gender from ML model scores — no camera-specific overrides
-                if female_score >= 0.70 and (female_score > male_score):
+                if female_score >= 0.50 and (female_score > male_score):
                     final_gender = "FEMALE"
-                elif male_score >= 0.70 and (male_score >= female_score):
+                elif male_score >= 0.50 and (male_score >= female_score):
                     final_gender = "MALE"
                 elif tr.get("cached_gender") in ("MALE", "FEMALE"):
                     final_gender = tr["cached_gender"]
@@ -409,9 +409,9 @@ class CameraWorker:
             if self.detect_nationality:
                 emirati_score = tr["nat_scores"].get("EMIRATI", 0.0)
                 non_emirati_score = tr["nat_scores"].get("NON_EMIRATI", 0.0)
-                if emirati_score >= 1.2 and (emirati_score - non_emirati_score >= 0.4):
+                if emirati_score >= 0.9 and (emirati_score - non_emirati_score >= 0.3):
                     final_nat = "EMIRATI"
-                elif non_emirati_score >= 0.8:
+                elif non_emirati_score >= 0.55:
                     final_nat = "NON_EMIRATI"
 
             # Prune spatial memory older than 60 seconds
@@ -420,7 +420,7 @@ class CameraWorker:
             # Confirmed presence before counting:
             # Person or pet must be consistently tracked for >= 10 frames AND in_zone_duration >= 0.8s (AND gate).
             # This completely stops single-frame glitched tracks or sudden movements from spiking the count!
-            MIN_CONFIRMATION_FRAMES = 10
+            MIN_CONFIRMATION_FRAMES = 8
 
             if in_zone and not tr["counted"] and (tr["frames"] >= MIN_CONFIRMATION_FRAMES and tr["in_zone_duration"] >= 0.8):
                 tr["counted"] = True
@@ -432,7 +432,7 @@ class CameraWorker:
                     if prev_cls == t_cls:
                         iou_val = box_iou(norm_box, prev_box)
                         dist_val = box_center_dist(norm_box, prev_box)
-                        if iou_val > 0.20 or dist_val < 0.25:
+                        if iou_val > 0.20 or dist_val < 0.18:
                             is_dup = True
                             break
 
@@ -579,3 +579,4 @@ class CameraWorker:
         }
 
         return live_payload, finished
+
