@@ -143,6 +143,8 @@ class CameraWorker:
             for r in self.detector.detect(crop_left):
                 if r["class"] == "PERSON":
                     raw_detections.append(r)
+                elif r["class"] in ("DOG", "CAT") and self.detect_pets:
+                    raw_detections.append(r)
 
             x_right = int(w * 0.42)
             crop_right = frame[:, x_right:]
@@ -151,6 +153,13 @@ class CameraWorker:
                     tb = r["box"]
                     raw_detections.append({
                         "class": "PERSON",
+                        "confidence": r["confidence"],
+                        "box": [float(tb[0] + x_right), float(tb[1]), float(tb[2] + x_right), float(tb[3])],
+                    })
+                elif r["class"] in ("DOG", "CAT") and self.detect_pets:
+                    tb = r["box"]
+                    raw_detections.append({
+                        "class": r["class"],
                         "confidence": r["confidence"],
                         "box": [float(tb[0] + x_right), float(tb[1]), float(tb[2] + x_right), float(tb[3])],
                     })
@@ -196,8 +205,12 @@ class CameraWorker:
                 continue
             if cls in ("DOG", "CAT") and not self.detect_pets:
                 continue
-            # Filter out glass reflections & low-confidence artifacts (< 0.32)
-            if d.get("confidence", 0.0) < 0.32:
+            # Filter out low-confidence artifacts — per-class thresholds:
+            # PERSON: 0.32 (strict, avoids ghost detections)
+            # DOG/CAT: 0.18 (lower — pet COCO class scores are naturally weaker)
+            conf_val = d.get("confidence", 0.0)
+            min_conf = 0.18 if d["class"] in ("DOG", "CAT") else 0.32
+            if conf_val < min_conf:
                 continue
             b = d["box"]
             bw = b[2] - b[0]
@@ -220,7 +233,7 @@ class CameraWorker:
 
             for c in clean_detections:
                 iou_v = box_iou(d["box"], c["box"])
-                if iou_v > 0.25:
+                if iou_v > 0.20:
                     is_dup = True
                     break
 
@@ -376,53 +389,40 @@ class CameraWorker:
                 male_score = tr["gender_scores"].get("MALE", 0.0)
                 female_score = tr["gender_scores"].get("FEMALE", 0.0)
 
-                # For CAM-002 office layout: Left green counter = 2 Female staff members
-                if self.code == "CAM-002" and box_cx < 0.48:
+                # Derive gender from ML model scores — no camera-specific overrides
+                if female_score >= 0.70 and (female_score > male_score):
                     final_gender = "FEMALE"
-                elif self.code == "CAM-002" and box_cx >= 0.48:
+                elif male_score >= 0.70 and (male_score >= female_score):
                     final_gender = "MALE"
-                elif self.code == "CAM-001":
-                    # Office Room (Lovosis UAE) workstation occupant seated behind glass is Male
-                    final_gender = "MALE"
+                elif tr.get("cached_gender") in ("MALE", "FEMALE"):
+                    final_gender = tr["cached_gender"]
                 else:
-                    # General camera logic with deep learning face & attire scoring
-                    if female_score >= 0.70 and (female_score > male_score):
-                        final_gender = "FEMALE"
-                    elif male_score >= 0.70 and (male_score >= female_score):
-                        final_gender = "MALE"
-                    elif tr.get("cached_gender") in ("MALE", "FEMALE"):
-                        final_gender = tr["cached_gender"]
-                    else:
-                        final_gender = "MALE"
+                    final_gender = "MALE"  # fallback only when no model data at all
 
             # Resolve nationality
+            # BUG FIX: removed CAM-001/CAM-002 nationality scoring fork — all cameras now use
+            # the same generic ML-driven thresholds so any new camera works correctly without
+            # code changes. Prior fork required emirati_score >= 2.5 for those two cameras
+            # (vs 1.2 generic), effectively hard-coding a NON_EMIRATI default for office cams
+            # regardless of MLP evidence.
             final_nat = "UNKNOWN"
             if self.detect_nationality:
-                if self.code in ("CAM-001", "CAM-002"):
-                    # Office workstation environments: default is regular attire unless authentic Kandura/Abaya verified
-                    emirati_score = tr["nat_scores"].get("EMIRATI", 0.0)
-                    non_emirati_score = tr["nat_scores"].get("NON_EMIRATI", 0.0)
-                    if emirati_score >= 2.5 and (emirati_score - non_emirati_score >= 1.5):
-                        final_nat = "EMIRATI"
-                    else:
-                        final_nat = "NON_EMIRATI"
-                else:
-                    emirati_score = tr["nat_scores"].get("EMIRATI", 0.0)
-                    non_emirati_score = tr["nat_scores"].get("NON_EMIRATI", 0.0)
-                    if emirati_score >= 1.2 and (emirati_score - non_emirati_score >= 0.4):
-                        final_nat = "EMIRATI"
-                    elif non_emirati_score >= 0.8:
-                        final_nat = "NON_EMIRATI"
+                emirati_score = tr["nat_scores"].get("EMIRATI", 0.0)
+                non_emirati_score = tr["nat_scores"].get("NON_EMIRATI", 0.0)
+                if emirati_score >= 1.2 and (emirati_score - non_emirati_score >= 0.4):
+                    final_nat = "EMIRATI"
+                elif non_emirati_score >= 0.8:
+                    final_nat = "NON_EMIRATI"
 
             # Prune spatial memory older than 60 seconds
             self.recent_counted_boxes = [item for item in self.recent_counted_boxes if (now_ts - item[0]) < 60.0]
 
             # Confirmed presence before counting:
-            # Person or pet must be consistently tracked for >= 10 frames (~0.8s) or in_zone_duration >= 0.8s.
+            # Person or pet must be consistently tracked for >= 10 frames AND in_zone_duration >= 0.8s (AND gate).
             # This completely stops single-frame glitched tracks or sudden movements from spiking the count!
             MIN_CONFIRMATION_FRAMES = 10
 
-            if in_zone and not tr["counted"] and (tr["frames"] >= MIN_CONFIRMATION_FRAMES or tr["in_zone_duration"] >= 0.8):
+            if in_zone and not tr["counted"] and (tr["frames"] >= MIN_CONFIRMATION_FRAMES and tr["in_zone_duration"] >= 0.8):
                 tr["counted"] = True
 
                 # Spatial deduplication check: has an object of this class been counted in almost the same spot recently?
@@ -432,7 +432,7 @@ class CameraWorker:
                     if prev_cls == t_cls:
                         iou_val = box_iou(norm_box, prev_box)
                         dist_val = box_center_dist(norm_box, prev_box)
-                        if iou_val > 0.25 or dist_val < 0.16:
+                        if iou_val > 0.20 or dist_val < 0.25:
                             is_dup = True
                             break
 
