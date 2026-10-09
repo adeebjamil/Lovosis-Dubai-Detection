@@ -6,11 +6,20 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faCircleCheck, faCircleExclamation, faCircleNotch, faEye, faEyeSlash, faLink, faPlug, faUser,
+  faBolt, faCircleCheck, faCircleExclamation, faCircleNotch, faEye, faEyeSlash, faLightbulb, faLink, faPlug, faUser,
 } from "@fortawesome/free-solid-svg-icons";
 import Modal from "@/components/ui/Modal";
 import { apiErrorMessage } from "@/lib/api";
-import { camerasApi, describeProbe, isRtspUrl, stripCredentials, type Camera, type ProbeResult } from "@/lib/cameras";
+import {
+  camerasApi,
+  convertStreamUrl,
+  describeProbe,
+  detectStreamProfile,
+  isRtspUrl,
+  stripCredentials,
+  type Camera,
+  type ProbeResult,
+} from "@/lib/cameras";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters").max(80, "Max 80 characters"),
@@ -28,13 +37,13 @@ type FormValues = z.infer<typeof schema>;
 
 const FPS_OPTIONS = [5, 8, 10, 12, 15];
 
-const URL_FORMATS: [string, string][] = [
-  ["Hikvision / Prama", "rtsp://IP:554/Streaming/Channels/101"],
-  ["Dahua / CP Plus / Amcrest", "rtsp://IP:554/cam/realmonitor?channel=1&subtype=0"],
-  ["Uniview (UNV)", "rtsp://IP:554/unicast/c1/s0/live"],
-  ["Axis", "rtsp://IP:554/axis-media/media.amp"],
-  ["Hanwha / Wisenet", "rtsp://IP:554/profile2/media.smp"],
-  ["NVR channel (Hikvision)", "rtsp://NVR-IP:554/Streaming/Channels/301  (channel 3)"],
+const URL_FORMATS: [string, string, string][] = [
+  ["Hikvision / Prama", "rtsp://IP:554/Streaming/Channels/101", "rtsp://IP:554/Streaming/Channels/102"],
+  ["Dahua / CP Plus / Amcrest", "rtsp://IP:554/cam/realmonitor?channel=1&subtype=0", "rtsp://IP:554/cam/realmonitor?channel=1&subtype=1"],
+  ["Uniview (UNV)", "rtsp://IP:554/unicast/c1/s0/live", "rtsp://IP:554/unicast/c1/s1/live"],
+  ["Axis", "rtsp://IP:554/axis-media/media.amp", "rtsp://IP:554/axis-media/media.amp?resolution=640x360"],
+  ["Hanwha / Wisenet", "rtsp://IP:554/profile1/media.smp", "rtsp://IP:554/profile2/media.smp"],
+  ["Milesight / Tiandy / Generic", "rtsp://IP:554/media/video1", "rtsp://IP:554/media/video2"],
 ];
 
 interface Props {
@@ -76,10 +85,20 @@ function CameraForm({ camera, onClose, onSaved }: Omit<Props, "open">) {
   const [probe, setProbe] = useState<ProbeResult | null>(null);
 
   const {
-    register, handleSubmit, control, trigger, getValues,
+    register, handleSubmit, control, trigger, getValues, setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: defaults(camera) });
   const detectPersons = useWatch({ control, name: "detectPersons" });
+  const currentRtspUrl = useWatch({ control, name: "rtspUrl" });
+  const currentProfile = detectStreamProfile(currentRtspUrl || "", camera?.height);
+
+  const handleSelectProfile = (targetProfile: "MAINSTREAM" | "SUBSTREAM") => {
+    const current = getValues("rtspUrl");
+    if (!current) return;
+    const converted = convertStreamUrl(current, targetProfile);
+    setValue("rtspUrl", converted, { shouldValidate: true, shouldDirty: true });
+    setProbe(null);
+  };
 
   const payload = (v: FormValues) => ({
     name: v.name,
@@ -154,7 +173,40 @@ function CameraForm({ camera, onClose, onSaved }: Omit<Props, "open">) {
         </div>
 
         <div>
-          <label htmlFor="cam-rtsp" className="form-label">RTSP URL</label>
+          <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+            <label htmlFor="cam-rtsp" className="form-label !mb-0">RTSP Stream URL</label>
+            <div className="flex items-center gap-1.5 bg-gray-200 dark:bg-gray-800 p-0.5 rounded-md">
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 font-medium px-1">Feed:</span>
+              <button
+                type="button"
+                id="btn-select-mainstream"
+                onClick={() => handleSelectProfile("MAINSTREAM")}
+                className={`px-2.5 py-1 text-xs rounded font-bold transition-all flex items-center gap-1.5 ${
+                  currentProfile === "MAINSTREAM"
+                    ? "bg-primary text-white shadow-xs"
+                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-700"
+                }`}
+                title="Mainstream (1080p / 2K / 4K) — 3x farther AI detection distance"
+              >
+                <FontAwesomeIcon icon={faBolt} className="text-[10px]" />
+                Mainstream (HD/2K)
+              </button>
+              <button
+                type="button"
+                id="btn-select-substream"
+                onClick={() => handleSelectProfile("SUBSTREAM")}
+                className={`px-2.5 py-1 text-xs rounded font-bold transition-all flex items-center gap-1.5 ${
+                  currentProfile === "SUBSTREAM"
+                    ? "bg-amber-600 text-white shadow-xs"
+                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-700"
+                }`}
+                title="Substream (SD / D1 / CIF) — Low bandwidth & smooth playback"
+              >
+                Substream (SD)
+              </button>
+            </div>
+          </div>
+
           <div className="input-group">
             <span className="input-icon"><FontAwesomeIcon icon={faLink} /></span>
             <input id="cam-rtsp" spellCheck={false} autoComplete="off" placeholder="rtsp://192.168.1.64:554/Streaming/Channels/101"
@@ -164,15 +216,63 @@ function CameraForm({ camera, onClose, onSaved }: Omit<Props, "open">) {
           {errors.rtspUrl ? (
             <p className="invalid-feedback">{errors.rtspUrl.message}</p>
           ) : (
-            <p className="form-text">Paste the full URL. Credentials can be inside the URL or in the fields below.</p>
+            <p className="form-text">Paste the full URL or use the buttons above to toggle between Mainstream (HD) and Substream (SD).</p>
           )}
+
+          {/* Pro Tip Callout Box for Outdoor & Long-Range Detection */}
+          {currentProfile === "SUBSTREAM" ? (
+            <div className="mt-2.5 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-900 dark:text-amber-200">
+              <div className="flex items-start gap-2.5">
+                <FontAwesomeIcon icon={faLightbulb} className="text-amber-500 mt-0.5 text-sm shrink-0" />
+                <div className="space-y-1.5 flex-1">
+                  <div className="font-bold text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                    <span>💡 Pro Tip for Outdoor Cameras &amp; Long-Range Detection:</span>
+                    <span className="badge badge-warning text-[10px]">SUBSTREAM ACTIVE</span>
+                  </div>
+                  <p className="leading-relaxed text-gray-800 dark:text-amber-200/90">
+                    Agar road ke piche chalte hue logon ko bhi door se pakadna hai, toh camera ke settings me jakar AI feed ko <strong>Substream (720×576)</strong> se <strong>Mainstream (1080p ya 2K)</strong> par switch karein, jisse detection distance <strong>3 guna barh jayegi!</strong>
+                  </p>
+                  <div>
+                    <button
+                      type="button"
+                      id="btn-quick-switch-mainstream"
+                      onClick={() => handleSelectProfile("MAINSTREAM")}
+                      className="btn btn-xs bg-amber-500 text-gray-950 font-bold hover:bg-amber-400 border-none inline-flex items-center gap-1.5 py-1 px-3 shadow-xs rounded cursor-pointer"
+                    >
+                      <FontAwesomeIcon icon={faBolt} /> Switch to Mainstream (3x Detection Range)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-2.5 rounded-lg border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 text-xs text-emerald-900 dark:text-emerald-200 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <FontAwesomeIcon icon={faBolt} className="text-emerald-500 shrink-0" />
+                <span>
+                  <strong>Mainstream Active (HD / 2K):</strong> Maximum detection distance active (up to 30–45m on outdoor roads).
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSelectProfile("SUBSTREAM")}
+                className="text-[11px] underline text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 shrink-0 font-medium"
+              >
+                Switch to Substream (SD)
+              </button>
+            </div>
+          )}
+
           <details className="mt-2 text-sm">
-            <summary className="cursor-pointer font-semibold text-primary">Common URL formats</summary>
-            <ul className="mt-2 space-y-1 rounded-[0.5rem] bg-gray-200 p-3">
-              {URL_FORMATS.map(([brand, url]) => (
-                <li key={brand} className="flex flex-wrap gap-x-2">
-                  <span className="w-48 shrink-0 font-semibold text-gray-800">{brand}</span>
-                  <code className="break-all text-xs text-gray-900">{url}</code>
+            <summary className="cursor-pointer font-semibold text-primary">Common URL formats (Mainstream vs Substream)</summary>
+            <ul className="mt-2 space-y-2 rounded-[0.5rem] bg-gray-200 dark:bg-gray-800/70 p-3 text-xs">
+              {URL_FORMATS.map(([brand, mainUrl, subUrl]) => (
+                <li key={brand} className="flex flex-col gap-0.5 border-b border-gray-300/60 dark:border-gray-700 pb-1.5 last:border-0 last:pb-0">
+                  <span className="font-bold text-gray-900 dark:text-gray-100">{brand}</span>
+                  <div className="flex flex-wrap gap-x-3 text-[11px]">
+                    <span className="text-gray-600 dark:text-gray-400">Main (HD): <code className="break-all text-primary font-mono">{mainUrl}</code></span>
+                    <span className="text-gray-600 dark:text-gray-400">Sub (SD): <code className="break-all text-amber-600 font-mono">{subUrl}</code></span>
+                  </div>
                 </li>
               ))}
             </ul>

@@ -23,6 +23,7 @@ camerasRouter.delete("/:id", cameras.remove);
 camerasRouter.post("/:id/test", probeLimiter, cameras.testSaved);
 camerasRouter.get("/:id/snapshot", probeLimiter, cameras.snapshot);
 camerasRouter.put("/:id/zone", cameras.updateZone);
+camerasRouter.post("/:id/switch-stream", cameras.switchStream);
 
 export const streamsRouter = Router();
 

@@ -5,7 +5,17 @@ import { env } from "../config/env";
 import { prisma } from "../lib/prisma";
 import { probeRtsp, snapshotJpeg } from "../lib/ffmpeg";
 import * as mtx from "../lib/mediamtx";
-import { parseRtsp, rtspIdentity, rtspInfo, rtspUrlSchema, streamPathFor, withCredentials } from "../lib/rtsp";
+import {
+  convertStreamUrl,
+  detectStreamProfile,
+  parseRtsp,
+  rtspIdentity,
+  rtspInfo,
+  rtspUrlSchema,
+  streamPathFor,
+  withCredentials,
+  type StreamProfile,
+} from "../lib/rtsp";
 import { forgetCamera, markConnecting, requestSync } from "../services/camera-monitor";
 import { emitToAdmins } from "../realtime/io";
 import { pushDetectorConfig } from "../realtime/detector-bridge";
@@ -24,6 +34,7 @@ export function toCameraDto(c: Camera) {
     username: info.username,
     hasPassword: info.hasPassword,
     host: info.host,
+    streamProfile: detectStreamProfile(c.rtspUrl, c.height),
     enabled: c.enabled,
     analyticsFps: c.analyticsFps,
     detectPersons: c.detectPersons,
@@ -284,5 +295,56 @@ export async function updateZone(req: Request, res: Response) {
   emitToAdmins("cameras:changed", { id: updated.id, action: "updated" });
   void pushDetectorConfig();
   res.json({ success: true, data: toCameraDto(updated) });
+}
+
+/** Toggle or switch camera stream between MAINSTREAM (HD/2K) and SUBSTREAM (SD/Smooth) */
+export async function switchStream(req: Request, res: Response) {
+  const cam = await getCamera(req, res);
+  if (!cam) return;
+
+  const target = req.body?.profile as StreamProfile | undefined;
+  const currentProfile = detectStreamProfile(cam.rtspUrl, cam.height);
+  const nextProfile: StreamProfile = target ?? (currentProfile === "MAINSTREAM" ? "SUBSTREAM" : "MAINSTREAM");
+  const newUrl = convertStreamUrl(cam.rtspUrl, nextProfile);
+
+  if (newUrl === cam.rtspUrl) {
+    return res.status(400).json({
+      success: false,
+      message: `Could not automatically determine the alternative ${nextProfile.toLowerCase()} URL for this camera format. Please edit the RTSP URL manually in camera settings.`,
+    });
+  }
+
+  // Quick async probe to get updated resolution if available
+  let probeW: number | null = null;
+  let probeH: number | null = null;
+  try {
+    const probe = await probeRtsp(newUrl);
+    if (probe.ok) {
+      probeW = probe.width;
+      probeH = probe.height;
+    }
+  } catch {
+    // non-fatal
+  }
+
+  const updated = await prisma.camera.update({
+    where: { id: cam.id },
+    data: {
+      rtspUrl: newUrl,
+      ...(probeW && probeH ? { width: probeW, height: probeH } : {}),
+      lastError: null,
+    },
+  });
+
+  await applyStream(updated);
+  emitToAdmins("cameras:changed", { id: updated.id, action: "updated" });
+  void pushDetectorConfig();
+  requestSync();
+
+  return res.json({
+    success: true,
+    data: toCameraDto(updated),
+    message: `Switched to ${nextProfile === "MAINSTREAM" ? "Mainstream (High Resolution / 3x Detection Range)" : "Substream (Low Bandwidth / Smooth)"}`,
+  });
 }
 

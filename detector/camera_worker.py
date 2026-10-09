@@ -196,7 +196,8 @@ class CameraWorker:
                 continue
             if cls in ("DOG", "CAT") and not self.detect_pets:
                 continue
-            if d.get("confidence", 0.0) < 0.20:
+            # Filter out glass reflections & low-confidence artifacts (< 0.32)
+            if d.get("confidence", 0.0) < 0.32:
                 continue
             b = d["box"]
             bw = b[2] - b[0]
@@ -214,13 +215,31 @@ class CameraWorker:
             is_dup = False
             d_cx = (d["box"][0] + d["box"][2]) / 2.0
             d_cy = (d["box"][1] + d["box"][3]) / 2.0
+            d_w = d["box"][2] - d["box"][0]
+            d_h = d["box"][3] - d["box"][1]
+
             for c in clean_detections:
                 iou_v = box_iou(d["box"], c["box"])
                 if iou_v > 0.25:
                     is_dup = True
                     break
+
                 c_cx = (c["box"][0] + c["box"][2]) / 2.0
                 c_cy = (c["box"][1] + c["box"][3]) / 2.0
+                c_w = c["box"][2] - c["box"][0]
+                c_h = c["box"][3] - c["box"][1]
+
+                # Raised-arm / vertical torso limb suppression:
+                # If two boxes share the same vertical column (hands raised above head)
+                x_inter = max(0.0, min(d["box"][2], c["box"][2]) - max(d["box"][0], c["box"][0]))
+                min_w = min(d_w, c_w)
+                if min_w > 0 and (x_inter / min_w) > 0.55:
+                    y_dist = abs(d_cy - c_cy)
+                    max_span = (d_h + c_h) * 0.75
+                    if y_dist < max_span:
+                        is_dup = True
+                        break
+
                 # On left desk column for CAM-002, prevent double torso/lap fragments
                 if self.code == "CAM-002" and d_cx < 330 and c_cx < 330 and abs(d_cx - c_cx) < 80 and abs(d_cy - c_cy) < 130:
                     is_dup = True

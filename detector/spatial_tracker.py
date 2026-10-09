@@ -56,8 +56,10 @@ class TrackedItem:
         max_delta = max(edge_deltas)
 
         if max_delta > 14.0:
-            # Significant intentional movement (person shifting or walking) -> smooth with EMA
-            alpha = 0.25
+            # Velocity-adaptive smoothing:
+            # - Moderate movement (walking / posture shift): smooth EMA (alpha = 0.40)
+            # - Fast movement (running / sprinting): immediate responsive snap (alpha = 0.85) to eliminate visual lag
+            alpha = 0.85 if max_delta > 55.0 else 0.40
             self.box = [
                 float(alpha * box[k] + (1.0 - alpha) * self.box[k])
                 for k in range(4)
@@ -130,8 +132,13 @@ class SpatialTracker:
                 iou_sc = box_iou(track.box, d_box)
                 dist = box_center_dist(track.box, d_box)
 
-                # Prioritize matching by nearest center distance within reach
-                is_valid = (iou_sc >= self.iou_threshold) or (dist <= self.max_center_distance)
+                # Prioritize matching by nearest center distance within dynamic reach
+                # Scale reach dynamically with body dimensions to maintain track ID during fast running across high-res 2K/4K cameras
+                t_w = abs(track.box[2] - track.box[0])
+                t_h = abs(track.box[3] - track.box[1])
+                reach = max(self.max_center_distance, max(t_w, t_h) * 1.25)
+
+                is_valid = (iou_sc >= self.iou_threshold) or (dist <= reach)
                 if is_valid and dist < best_dist:
                     best_dist = dist
                     best_det_idx = i

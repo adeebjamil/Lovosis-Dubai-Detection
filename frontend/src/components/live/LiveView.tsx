@@ -18,7 +18,7 @@ import {
   faVideoSlash,
 } from "@fortawesome/free-solid-svg-icons";
 import { useCameras } from "@/hooks/useCameras";
-import { STATUS_META, type Camera } from "@/lib/cameras";
+import { STATUS_META, detectStreamProfile, type Camera } from "@/lib/cameras";
 import { toast } from "@/store/toast";
 import EmptyState from "@/components/ui/EmptyState";
 import WebRtcPlayer from "./WebRtcPlayer";
@@ -77,7 +77,16 @@ function LiveTile({ camera, showOverlay }: { camera: Camera; showOverlay: boolea
             <span className={`status-dot ${meta.color}`} aria-label={meta.label} />
             <span className="truncate">{camera.code} · {camera.name}</span>
           </span>
-          <span className="flex shrink-0 items-center gap-3">
+          <span className="flex shrink-0 items-center gap-2">
+            <span
+              className={`badge text-[9px] py-0.5 font-bold ${
+                detectStreamProfile(camera.rtspUrl, camera.height) === "MAINSTREAM"
+                  ? "badge-primary"
+                  : "badge-warning"
+              }`}
+            >
+              {detectStreamProfile(camera.rtspUrl, camera.height) === "MAINSTREAM" ? "HD MAIN" : "SD SUB"}
+            </span>
             {camera.width && camera.height && <span className="hidden sm:inline">{camera.width}×{camera.height}</span>}
             <button type="button" onClick={fullscreen} className="text-white/80 hover:text-white" aria-label={`Fullscreen ${camera.name}`}>
               <FontAwesomeIcon icon={faExpand} />

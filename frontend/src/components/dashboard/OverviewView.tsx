@@ -26,6 +26,8 @@ import {
   faTableCellsLarge,
   faChartLine,
   faTowerBroadcast,
+  faBolt,
+  faLightbulb,
 } from "@fortawesome/free-solid-svg-icons";
 import { api, apiErrorMessage } from "@/lib/api";
 import { acquireSocket, releaseSocket } from "@/lib/socket";
@@ -33,7 +35,8 @@ import { HeroChartCard, StatCard, type ChartPoint } from "@/components/ui/Cards"
 import EmptyState from "@/components/ui/EmptyState";
 import CameraStatusBadge from "@/components/cameras/CameraStatusBadge";
 import { useCameras } from "@/hooks/useCameras";
-import { STATUS_META, type Camera, type LiveFramePayload } from "@/lib/cameras";
+import { STATUS_META, camerasApi, detectStreamProfile, type Camera, type LiveFramePayload } from "@/lib/cameras";
+import { toast } from "@/store/toast";
 import WebRtcPlayer from "@/components/live/WebRtcPlayer";
 import DetectionOverlay from "@/components/live/DetectionOverlay";
 import CctvDetailsBar from "@/components/live/CctvDetailsBar";
@@ -79,6 +82,7 @@ export default function OverviewView() {
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState<boolean>(true);
   const [viewMode, setViewMode] = useState<ViewMode>("split");
+  const [switchingStream, setSwitchingStream] = useState<boolean>(false);
 
   // Restore saved view mode preference
   useEffect(() => {
@@ -390,7 +394,49 @@ export default function OverviewView() {
               )}
 
               {/* Live Camera Controls */}
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* 1-Click Stream Profile Switcher */}
+                {activeCamera && (
+                  <button
+                    type="button"
+                    id="btn-switch-overview-stream"
+                    onClick={async () => {
+                      if (switchingStream) return;
+                      setSwitchingStream(true);
+                      try {
+                        const currentProfile = detectStreamProfile(activeCamera.rtspUrl, activeCamera.height);
+                        const target = currentProfile === "MAINSTREAM" ? "SUBSTREAM" : "MAINSTREAM";
+                        const res = await camerasApi.switchStream(activeCamera.id, target);
+                        toast.success(res.message);
+                      } catch {
+                        toast.error("Could not switch stream profile");
+                      } finally {
+                        setSwitchingStream(false);
+                      }
+                    }}
+                    disabled={switchingStream}
+                    className={`btn btn-sm text-xs flex items-center gap-1.5 font-bold transition-all cursor-pointer ${
+                      detectStreamProfile(activeCamera.rtspUrl, activeCamera.height) === "MAINSTREAM"
+                        ? "btn-outline-primary"
+                        : "bg-amber-500 text-gray-950 hover:bg-amber-400 border-none shadow-xs animate-pulse"
+                    }`}
+                    title={
+                      detectStreamProfile(activeCamera.rtspUrl, activeCamera.height) === "MAINSTREAM"
+                        ? "Currently on HD Mainstream. Click to switch to SD Substream (Low Bandwidth)."
+                        : "💡 Pro Tip: Substream (SD) is active! Click to switch to HD Mainstream for 3x farther pedestrian detection on roads."
+                    }
+                  >
+                    <FontAwesomeIcon icon={faBolt} className="text-xs" />
+                    <span>
+                      {switchingStream
+                        ? "Switching…"
+                        : detectStreamProfile(activeCamera.rtspUrl, activeCamera.height) === "MAINSTREAM"
+                        ? "HD Main"
+                        : "Switch to HD (3x Range)"}
+                    </span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   id="btn-toggle-overview-overlay"
@@ -457,6 +503,17 @@ export default function OverviewView() {
                             )}
                           </span>
                           <span className="flex shrink-0 items-center gap-2 text-xs">
+                            <span
+                              className={`badge text-[9px] py-0.5 font-bold ${
+                                detectStreamProfile(activeCamera.rtspUrl, activeCamera.height) === "MAINSTREAM"
+                                  ? "badge-primary"
+                                  : "badge-warning"
+                              }`}
+                            >
+                              {detectStreamProfile(activeCamera.rtspUrl, activeCamera.height) === "MAINSTREAM"
+                                ? "HD MAINSTREAM"
+                                : "SD SUBSTREAM"}
+                            </span>
                             {activeCamera.width && activeCamera.height && (
                               <span className="hidden sm:inline text-gray-300">
                                 {activeCamera.width}×{activeCamera.height}

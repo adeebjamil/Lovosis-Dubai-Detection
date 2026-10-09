@@ -76,3 +76,70 @@ export function scrubSecrets(text: string, raw?: string): string {
 
 /** MediaMTX path name for a camera code: CAM-001 → cam-001 */
 export const streamPathFor = (code: string) => code.toLowerCase();
+
+export type StreamProfile = "MAINSTREAM" | "SUBSTREAM";
+
+export function detectStreamProfile(url: string, height?: number | null): StreamProfile {
+  const lower = (url || "").toLowerCase();
+  if (
+    lower.includes("subtype=1") ||
+    lower.includes("subtype=2") ||
+    lower.includes("/channels/102") ||
+    lower.includes("/channels/202") ||
+    lower.includes("/s1/") ||
+    lower.includes("/video2") ||
+    lower.includes("/profile2") ||
+    lower.includes("/sub/")
+  ) {
+    return "SUBSTREAM";
+  }
+  if (
+    lower.includes("subtype=0") ||
+    lower.includes("/channels/101") ||
+    lower.includes("/channels/201") ||
+    lower.includes("/s0/") ||
+    lower.includes("/video1") ||
+    lower.includes("/profile1") ||
+    lower.includes("/main/")
+  ) {
+    return "MAINSTREAM";
+  }
+  if (height && height < 720) return "SUBSTREAM";
+  return "MAINSTREAM";
+}
+
+export function convertStreamUrl(url: string, targetProfile: StreamProfile): string {
+  let result = url;
+  if (targetProfile === "MAINSTREAM") {
+    // Dahua / CP Plus: subtype=1 -> subtype=0
+    result = result.replace(/([?&]subtype=)[1-9]\d*/i, "$10");
+    // Hikvision: /Channels/102 -> /Channels/101, /Channels/202 -> /Channels/201
+    result = result.replace(/(\/Channels\/\d+0)[2-9]/i, "$11");
+    // Hikvision alternative: /sub/ -> /main/
+    result = result.replace(/\/sub\//i, "/main/");
+    // Uniview: /s1/ -> /s0/
+    result = result.replace(/\/s[1-9]\//i, "/s0/");
+    // Milesight / Tiandy / Generic: /video2 -> /video1
+    result = result.replace(/(\/video)[2-9]/i, "$11");
+    // Hanwha: /profile2/ -> /profile1/
+    result = result.replace(/\/profile[2-9]\//i, "/profile1/");
+    // Generic stream param: stream=1 -> stream=0
+    result = result.replace(/([?&]stream=)[1-9]\d*/i, "$10");
+  } else {
+    // Dahua / CP Plus: subtype=0 -> subtype=1
+    result = result.replace(/([?&]subtype=)0/i, "$11");
+    // Hikvision: /Channels/101 -> /Channels/102
+    result = result.replace(/(\/Channels\/\d+0)1/i, "$12");
+    // Hikvision alternative: /main/ -> /sub/
+    result = result.replace(/\/main\//i, "/sub/");
+    // Uniview: /s0/ -> /s1/
+    result = result.replace(/\/s0\//i, "/s1/");
+    // Milesight / Generic: /video1 -> /video2
+    result = result.replace(/(\/video)1/i, "$12");
+    // Hanwha: /profile1/ -> /profile2/
+    result = result.replace(/\/profile1\//i, "/profile2/");
+    // Generic stream param: stream=0 -> stream=1
+    result = result.replace(/([?&]stream=)0/i, "$11");
+  }
+  return result;
+}
