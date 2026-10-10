@@ -394,17 +394,33 @@ class AttireClassifier:
             pred_conf = float(probs[pred_idx])
 
             if pred_idx == 0:  # emirati_female
-                nat = "EMIRATI"
-                nat_conf = round(pred_conf, 2)
-                g = verified_face_gender if verified_face_gender == "FEMALE" else "FEMALE"
-                gc = max(0.88, verified_face_conf)
-                attire = "abaya"
+                # Only accept EMIRATI Abaya if robe is genuinely black, low saturation, and not colored casual wear
+                if is_abaya or (b_blk >= 0.40 and not is_colored_casual and verified_face_gender != "MALE" and (c_blk >= 0.20 or chk_std <= 35)):
+                    nat = "EMIRATI"
+                    nat_conf = round(pred_conf, 2)
+                    g = verified_face_gender if verified_face_gender == "FEMALE" else "FEMALE"
+                    gc = max(0.88, verified_face_conf)
+                    attire = "abaya"
+                else:
+                    nat = "NON_EMIRATI"
+                    nat_conf = 0.85
+                    g = verified_face_gender
+                    gc = verified_face_conf
+                    attire = "regular"
             elif pred_idx == 1:  # emirati_male
-                nat = "EMIRATI"
-                nat_conf = round(pred_conf, 2)
-                g = verified_face_gender if verified_face_gender == "MALE" else "MALE"
-                gc = max(0.88, verified_face_conf)
-                attire = "kandura"
+                # Only accept EMIRATI Kandura if robe is genuinely white, low saturation, and not colored casual wear
+                if is_kandura or (b_wht >= 0.35 and not is_colored_casual and verified_face_gender != "FEMALE"):
+                    nat = "EMIRATI"
+                    nat_conf = round(pred_conf, 2)
+                    g = verified_face_gender if verified_face_gender == "MALE" else "MALE"
+                    gc = max(0.88, verified_face_conf)
+                    attire = "kandura"
+                else:
+                    nat = "NON_EMIRATI"
+                    nat_conf = 0.85
+                    g = verified_face_gender
+                    gc = verified_face_conf
+                    attire = "regular"
             else:  # non_emirati
                 nat = "NON_EMIRATI"
                 nat_conf = round(pred_conf, 2)

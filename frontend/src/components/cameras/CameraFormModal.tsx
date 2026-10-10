@@ -27,7 +27,7 @@ const schema = z.object({
   rtspUrl: z.string().trim().refine(isRtspUrl, "Enter a valid RTSP URL starting with rtsp://"),
   username: z.string().trim().max(128),
   password: z.string().max(256),
-  analyticsFps: z.number().int().min(1).max(25),
+  analyticsFps: z.number().int().min(1).max(30),
   enabled: z.boolean(),
   detectPersons: z.boolean(),
   detectGender: z.boolean(),
@@ -35,7 +35,7 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-const FPS_OPTIONS = [5, 8, 10, 12, 15];
+const FPS_OPTIONS = [5, 8, 10, 12, 15, 20, 25, 30];
 
 const URL_FORMATS: [string, string, string][] = [
   ["Hikvision / Prama", "rtsp://IP:554/Streaming/Channels/101", "rtsp://IP:554/Streaming/Channels/102"],
@@ -329,7 +329,7 @@ function CameraForm({ camera, onClose, onSaved }: Omit<Props, "open">) {
               <select id="cam-fps" className="form-control" {...register("analyticsFps", { valueAsNumber: true })}>
                 {FPS_OPTIONS.map((f) => <option key={f} value={f}>{f} fps</option>)}
               </select>
-              <p className="form-text">Frames analysed per second. 10 fps is accurate for walking people.</p>
+              <p className="form-text">Frames analysed per second. 10–12 fps is optimal for walking pedestrians; 20–30 fps for fast motion or dedicated GPUs.</p>
             </div>
           </div>
           <label className="form-switch mt-4">

@@ -69,7 +69,7 @@ const settingsShape = {
   name: z.string().trim().min(2, "Name must be at least 2 characters").max(80),
   location: optionalText(120),
   enabled: z.boolean().optional(),
-  analyticsFps: z.number().int().min(1).max(25).optional(),
+  analyticsFps: z.number().int().min(1).max(30).optional(),
   detectPersons: z.boolean().optional(),
   detectGender: z.boolean().optional(),
   detectPets: z.boolean().optional(),

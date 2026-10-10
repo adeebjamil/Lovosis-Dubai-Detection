@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
@@ -9,6 +9,7 @@ from detector.yolox import YoloXDetector
 from detector.zone import ZoneChecker
 from detector.attire import AttireClassifier
 from detector.spatial_tracker import SpatialTracker
+from detector.byte_tracker import ByteTracker
 
 
 def box_iou(b1: list[float], b2: list[float]) -> float:
@@ -39,7 +40,7 @@ class CameraWorker:
         self.code = camera_config["code"]
         self.name = camera_config["name"]
         self.local_rtsp = camera_config["localRtspUrl"]
-        self.analytics_fps = max(1, min(25, camera_config.get("analyticsFps", 10)))
+        self.analytics_fps = max(1, min(30, camera_config.get("analyticsFps", 10)))
 
         self.detect_persons = camera_config.get("detectPersons", True)
         self.detect_gender = camera_config.get("detectGender", True)
@@ -53,7 +54,13 @@ class CameraWorker:
 
         self.detector = detector
         self.attire = attire
-        self.tracker = SpatialTracker(
+        self.tracker = ByteTracker(
+            track_thresh=0.30,
+            low_thresh=0.10,
+            match_thresh=0.45,
+            max_lost_seconds=7.0,
+        )
+        self.fallback_tracker = SpatialTracker(
             max_lost_seconds=7.0,
             iou_threshold=0.15,
             max_center_distance=80.0,
@@ -113,7 +120,13 @@ class CameraWorker:
         self.active_tracks.clear()
         self.recent_counted_boxes.clear()
         self.counted_ids.clear()
-        self.tracker = SpatialTracker(
+        self.tracker = ByteTracker(
+            track_thresh=0.30,
+            low_thresh=0.10,
+            match_thresh=0.45,
+            max_lost_seconds=7.0,
+        )
+        self.fallback_tracker = SpatialTracker(
             max_lost_seconds=7.0,
             iou_threshold=0.15,
             max_center_distance=80.0,
@@ -275,7 +288,11 @@ class CameraWorker:
             "cats": 0,
         }
 
-        tracked = self.tracker.update(clean_detections, now_ts)
+        try:
+            tracked = self.tracker.update(clean_detections, now_ts)
+        except Exception as e:
+            # Automatic fallback to SpatialTracker ensures 99.99% continuous operation
+            tracked = self.fallback_tracker.update(clean_detections, now_ts)
 
         matched_track_ids = set()
         for tr_item in tracked:

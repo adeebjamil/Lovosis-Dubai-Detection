@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import socketio
 
@@ -32,6 +33,8 @@ class DetectorService:
         self.detector = YoloXDetector(yolox_model)
         self.attire = AttireClassifier()
 
+        cpu_cnt = os.cpu_count() or 4
+        self._executor = ThreadPoolExecutor(max_workers=min(32, cpu_cnt * 2))
         self.workers: dict[str, CameraWorker] = {}
         self.workers_lock = threading.Lock()
         self.running = False
@@ -99,6 +102,10 @@ class DetectorService:
 
     def stop(self):
         self.running = False
+        try:
+            self._executor.shutdown(wait=False)
+        except Exception:
+            pass
         with self.workers_lock:
             for w in self.workers.values():
                 w.stop()
@@ -108,16 +115,34 @@ class DetectorService:
 
     def _inference_loop(self):
         target_interval = 0.05  # target ~20 FPS loop rate
+
+        def _process_single(w: CameraWorker):
+            try:
+                lp, ft = w.process_frame()
+                return w, lp, ft, None
+            except Exception as exc:
+                return w, None, [], exc
+
         while self.running:
             t0 = time.time()
             with self.workers_lock:
                 workers_snapshot = list(self.workers.values())
 
-            for worker in workers_snapshot:
+            if not workers_snapshot:
+                time.sleep(0.05)
+                continue
+
+            # Parallel non-blocking execution across all active cameras
+            futures = [self._executor.submit(_process_single, w) for w in workers_snapshot]
+            for fut in futures:
                 if not self.running:
                     break
                 try:
-                    live_payload, finished_tracks = worker.process_frame()
+                    worker, live_payload, finished_tracks, err = fut.result(timeout=10.0)
+                    if err:
+                        print(f"[detector] error processing frame for {worker.code}: {err}")
+                        continue
+
                     now = time.time()
                     if not hasattr(worker, "_last_status_log") or now - worker._last_status_log >= 3.0:
                         worker._last_status_log = now
@@ -133,7 +158,7 @@ class DetectorService:
                         if self.sio.connected:
                             self.sio.emit("detections:track_finished", tr, namespace="/detector")
                 except Exception as e:
-                    print(f"[detector] error processing frame for {worker.code}: {e}")
+                    print(f"[detector] parallel worker execution warning: {type(e).__name__} {e}")
 
             elapsed = time.time() - t0
             sleep_needed = max(0.005, target_interval - elapsed)
